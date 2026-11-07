@@ -89,7 +89,7 @@ export function App() {
       <div className={'banner ' + (active ? 'live' : 'warn')} role="status">
         {active
           ? <>Auto-reply AKTIF. {g.autoSend && IS_FULL ? 'Aturan mode Auto akan mengirim sendiri setelah jeda acak.' : 'Balasan dibuat sebagai draft; Anda yang menekan kirim.'}</>
-          : g.enabled ? 'Saklar utama menyala, tetapi belum ada aturan yang aktif.' : 'Auto-reply MATI. Sampel aturan di bawah masih nonaktif.'}
+          : g.enabled ? 'Saklar utama menyala, tetapi belum ada aturan yang aktif.' : rules.some((r) => r.enabled) ? 'Ada aturan yang aktif, tetapi saklar utama "Auto-reply aktif" di atas MASIH MATI, jadi tidak ada balasan sama sekali. Nyalakan saklar itu.' : 'Auto-reply MATI. Sampel aturan di bawah masih nonaktif.'}
         {' '}<span className="mut">Hanya bereaksi pada pesan yang masuk setelah saklar dinyalakan, dan hanya saat tab WhatsApp Web terbuka.</span>
       </div>
 

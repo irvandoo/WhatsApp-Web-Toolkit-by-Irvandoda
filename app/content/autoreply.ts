@@ -3,6 +3,7 @@ import { call } from './bridge';
 import { sendSilent } from './send-settings';
 import { insertErrorText, insertIntoComposer, type InsertResult } from './composer-insert';
 import { IS_FULL } from '../shared/credit';
+import type { ExplainCheck, ExplainItem, ExplainResult } from '../shared/messages';
 import { phoneFromChatId } from '../shared/crm-logic';
 import { decide, isGroupKey, overRateLimit, scopeOf } from '../shared/autoreply-logic';
 import {
@@ -303,4 +304,48 @@ export function mountAutoReply(): void {
   timers.push(setInterval(() => { void tick(); }, POLL_MS));
   timers.push(setInterval(() => { if (alive()) void loadRules(); }, RULES_MS));
   timers.push(setInterval(() => { if (alive()) void loadLog(); }, LOG_REFRESH_MS));
+}
+
+/**
+ * Dry run for "Mengapa tidak membalas?": evaluates every precondition and what decide() would do for the newest
+ * inbound messages right now. Sends nothing, writes nothing.
+ */
+export async function explainAutoReply(): Promise<ExplainResult> {
+  const checks: ExplainCheck[] = [];
+  const add = (label: string, ok: boolean, detail: string) => checks.push({ label, ok, detail });
+  add('Sakelar "Auto-reply aktif" menyala', global.enabled, global.enabled ? 'ya' : 'MATI. Nyalakan di bagian atas halaman Auto-reply (bawaannya mati).');
+  add('Mode Otomatis tidak dijeda', isEngineOn('autoReply'), isEngineOn('autoReply') ? 'ya' : 'Mesin auto-reply dimatikan/dijeda. Buka Status di navbar lalu lanjutkan.');
+  const on = rules.filter((r) => r.enabled);
+  add('Ada aturan yang aktif', on.length > 0, `${on.length} aktif dari ${rules.length} aturan${on.length ? ': ' + on.map((r) => `${r.name} (${scopeOf(r)}, ${r.trigger})`).join('; ') : '. Nyalakan sakelar pada aturan.'}`);
+  const p = await call<PingResult>({ type: 'ping' }, 5000).catch(() => null);
+  add('Adapter WhatsApp siap', !!p, p ? 'ya' : 'Adapter tidak menjawab. Muat ulang tab WhatsApp.');
+  add('Daftar chat WhatsApp terbaca', !!p?.store, p?.store ? 'ya' : 'Belum terbaca (WhatsApp masih memuat, atau nama modul internal berubah).');
+  add('Akun Anda terdeteksi', !!p?.accountId, p?.accountId ? p.accountId : 'Tidak terdeteksi. Mesin menunggu terus tanpa pesan galat. Jalankan Diagnostik pengirim dan kirim hasilnya.');
+  add('Mode kirim', true, IS_FULL ? (getAutoReplyState().autoSend ? 'kirim otomatis' : 'draf saja (sakelar Auto-kirim mati)') : 'draf saja (build store)');
+  const items: ExplainItem[] = [];
+  let polled: InboxItem[] = [];
+  try { if (p?.store) polled = await call<InboxItem[]>({ type: 'inbox:poll', sinceTs: 0, includeGroups: true }, 15_000); } catch { /* reported below */ }
+  add('Pesan teks masuk terbaca dari WhatsApp', polled.length > 0, polled.length ? `${polled.length} chat punya pesan masuk teks terakhir` : 'Tidak ada. Pesan harus berupa teks biasa, dan chat harus punya pesan masuk terakhir.');
+  const now = Date.now();
+  for (const it of polled.sort((a, b) => b.ts - a.ts).slice(0, 8)) {
+    let decision = '-', reason = '';
+    try {
+      const chatKey = `${p?.accountId ?? ''}|${it.chatId}`;
+      const r = await send<ArCtx | { error: string }>({ kind: 'ar:ctx', chatKey });
+      if (!r || 'error' in r) { reason = 'konteks CRM tidak terbaca'; }
+      else {
+        const lastOut = Math.max(it.lastOutTs ?? 0, r.lastOutTs ?? 0) || null;
+        const d = decide({
+          rotation: {}, rules, now, log, lastOutboundTs: lastOut, vars: varsFor(r, it), canAutoSend: IS_FULL && sendAvailable && getAutoReplyState().autoSend,
+          inbound: { chatKey, text: it.text, ts: it.ts, isGroup: !!it.isGroup, isNewLead: r.isNewLead, optOut: r.optOut, author: it.author, groupName: it.groupName, mentionedMe: it.mentionedMe, quotedMe: it.quotedMe, isBot: it.isBot, fromMe: false },
+        });
+        decision = d.action === 'skip' ? 'tidak dibalas' : d.action === 'send' ? 'akan DIKIRIM' : 'akan jadi DRAF';
+        reason = d.rule ? `aturan "${d.rule.name}": ${d.reason}` : d.reason;
+      }
+    } catch (e) { reason = String(e); }
+    const after = it.ts > sinceTs;
+    if (!after) reason = `diterima SEBELUM auto-reply dinyalakan, sengaja diabaikan (${reason})`;
+    items.push({ name: it.name || it.chatId, isGroup: !!it.isGroup, text: it.text.slice(0, 80), ageMin: Math.round((now - it.ts) / 60000), afterActivation: after, decision, reason });
+  }
+  return { checks, items };
 }

@@ -111,5 +111,10 @@ export const DEFAULT_SEND_SETTINGS: SendSettings = { allowDomMacro: false };
 export interface ProbeItem { name: string; found: boolean; type: string; group: string }
 export interface ProbeResult { items: ProbeItem[]; accountId: string | null; store: boolean; hidden: boolean }
 /** Extension page -> background -> WA tab content (diag-bridge) -> adapter. */
-export type DiagMsg = { kind: 'diag:probe' } | { kind: 'diag:selftest'; allowDom?: boolean };
-export type DiagExec = { kind: 'diag:exec'; op: 'probe' } | { kind: 'diag:exec'; op: 'selftest'; allowDom?: boolean };
+export type DiagMsg = { kind: 'diag:probe' } | { kind: 'diag:selftest'; allowDom?: boolean } | { kind: 'diag:explain' };
+export type DiagExec = { kind: 'diag:exec'; op: 'probe' } | { kind: 'diag:exec'; op: 'explain' } | { kind: 'diag:exec'; op: 'selftest'; allowDom?: boolean };
+
+/** Result of the auto-reply dry run ("Mengapa tidak membalas?"). Nothing is sent or written. */
+export interface ExplainCheck { label: string; ok: boolean; detail: string }
+export interface ExplainItem { name: string; isGroup: boolean; text: string; ageMin: number; afterActivation: boolean; decision: string; reason: string }
+export interface ExplainResult { checks: ExplainCheck[]; items: ExplainItem[] }

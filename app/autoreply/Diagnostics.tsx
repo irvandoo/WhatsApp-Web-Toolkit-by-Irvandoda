@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { IS_FULL } from '../shared/credit';
+import { Explain } from './Explain';
 import { diagError, formatProbe, formatSelfTest } from '../shared/diag-format';
 import { DEFAULT_SEND_SETTINGS, SEND_SETTINGS_KEY, type ProbeResult, type SendResult, type SendSettings } from '../shared/messages';
 
@@ -41,6 +42,7 @@ export function Diagnostics() {
 
   return (
     <div className="diag" id="diag">
+      <Explain />
       <div className="banner warn">
         <h2>Diagnostik pengirim</h2>
         <p>Mengecek apakah WhatsApp Web di tab Anda menyediakan jalur kirim senyap (tanpa membuka chat). Internal WhatsApp sering berubah, jadi hasil ini adalah fakta di browser Anda. Tab WhatsApp Web harus terbuka.</p>
