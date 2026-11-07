@@ -99,4 +99,36 @@ describe('overlay window', () => {
     openOverlay('analytics');
     expect(getOverlayGeometry()).toMatchObject({ w: 1120, h: 720 });
   });
+
+  it('layar penuh tetap saat pindah menu dan diingat sampai dimatikan', () => {
+    openOverlay('crm');
+    const head = root.querySelector('header') as HTMLElement;
+    head.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(getOverlayGeometry()).toEqual({ x: 0, y: 0, w: 1600, h: 900 });
+    // pindah menu lewat rail: tetap layar penuh
+    (root.querySelector('.rail button[data-page=pos]') as HTMLElement).click();
+    expect(getOverlayGeometry()).toEqual({ x: 0, y: 0, w: 1600, h: 900 });
+    openOverlay('analytics');
+    expect(getOverlayGeometry()).toEqual({ x: 0, y: 0, w: 1600, h: 900 });
+    expect(localStorage.getItem('wwt-ov-max')).toBe('1');
+    // ditutup lalu dibuka lagi: masih layar penuh
+    closeOverlay();
+    openOverlay('groups');
+    expect(getOverlayGeometry()).toEqual({ x: 0, y: 0, w: 1600, h: 900 });
+    // dimatikan: kembali ke ukuran biasa halaman itu dan tidak diingat lagi
+    (root.querySelector('header') as HTMLElement).dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(getOverlayGeometry()!.w).toBeLessThan(1600);
+    expect(localStorage.getItem('wwt-ov-max')).toBeNull();
+    (root.querySelector('.rail button[data-page=crm]') as HTMLElement).click();
+    expect(getOverlayGeometry()!.w).toBeLessThan(1600);
+  });
+
+  it('memilih ukuran (Kompak/Sedang/Lebar) mematikan layar penuh', () => {
+    openOverlay('crm');
+    (root.querySelector('header') as HTMLElement).dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(localStorage.getItem('wwt-ov-max')).toBe('1');
+    (root.querySelector('[data-p=reset]') as HTMLElement).click();
+    expect(localStorage.getItem('wwt-ov-max')).toBeNull();
+    expect(getOverlayGeometry()!.w).toBeLessThan(1600);
+  });
 });

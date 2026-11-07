@@ -2,7 +2,7 @@ import { IS_FULL } from '../shared/credit';
 import type { GroupsUnavailable, RcpExec, RcpMsg } from '../shared/messages';
 import { handleGrp } from './groups';
 
-const KINDS = ['rcp:labels', 'rcp:label-chats', 'rcp:groups', 'rcp:group-members'];
+const KINDS = ['rcp:labels', 'rcp:label-chats', 'rcp:groups', 'rcp:group-members', 'rcp:chats', 'rcp:ping'];
 export const isRcpMsg = (m: unknown): m is RcpMsg => !!m && KINDS.includes(String((m as { kind?: unknown }).kind));
 
 async function findWaTab(): Promise<number | null> {
@@ -20,7 +20,10 @@ export async function handleRcp(m: RcpMsg): Promise<unknown> {
   }
   const tabId = await findWaTab();
   if (tabId == null) return un('no-tab');
-  const msg: RcpExec = m.kind === 'rcp:labels' ? { kind: 'rcp:exec', op: 'labels' } : { kind: 'rcp:exec', op: 'label-chats', labelId: m.labelId };
+  const msg: RcpExec = m.kind === 'rcp:labels' ? { kind: 'rcp:exec', op: 'labels' }
+    : m.kind === 'rcp:chats' ? { kind: 'rcp:exec', op: 'chats' }
+    : m.kind === 'rcp:ping' ? { kind: 'rcp:exec', op: 'ping' }
+    : { kind: 'rcp:exec', op: 'label-chats', labelId: m.labelId };
   try {
     return (await chrome.tabs.sendMessage(tabId, msg)) ?? un('no-response');
   } catch {

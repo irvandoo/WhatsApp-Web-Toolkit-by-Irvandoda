@@ -118,21 +118,28 @@ function setGeo(s: State, g: Geo, persist: boolean): void {
   paint(s);
   if (persist && !s.maximized) writeGeo(s.page, g);
 }
+// Full screen is a property of the WINDOW, not of a page: switching modules (rail) keeps it, and it is remembered
+// until the user turns it off (button / double-click on the header) or picks a size preset.
+const MAX_KEY = 'wwt-ov-max';
+const readMax = (): boolean => { try { return localStorage.getItem(MAX_KEY) === '1'; } catch { return false; } };
+const writeMax = (on: boolean): void => { try { if (on) localStorage.setItem(MAX_KEY, '1'); else localStorage.removeItem(MAX_KEY); } catch { /* storage unavailable */ } };
+
 function applyPage(s: State): void {
   const { vw, vh } = vp();
-  s.maximized = false;
-  s.geo = readStore()[s.page] ?? defaultGeo(s.page, vw, vh);
+  s.geo = s.maximized ? maximizedGeo(vw, vh) : (readStore()[s.page] ?? defaultGeo(s.page, vw, vh));
   paint(s);
 }
 function setMaximized(s: State, on: boolean): void {
   const { vw, vh } = vp();
   s.maximized = on;
+  writeMax(on);
   if (on) s.geo = maximizedGeo(vw, vh); else s.geo = readStore()[s.page] ?? defaultGeo(s.page, vw, vh);
   paint(s);
 }
 function applyPreset(s: State, p: SizePreset | 'reset'): void {
   const { vw, vh } = vp();
   s.maximized = false;
+  writeMax(false);
   if (p === 'reset') { writeGeo(s.page, null); s.geo = defaultGeo(s.page, vw, vh); paint(s); }
   else setGeo(s, presetGeo(p, s.page, vw, vh), true);
   s.el.menu.hidden = true;
@@ -189,7 +196,7 @@ export function openOverlay(page: OverlayPage, hash?: string): void {
     host, page,
     prevFocus: document.activeElement,
     el: { bd, title: q('h2'), frame: q<HTMLIFrameElement>('iframe'), sk: q('.sk'), fb: q('.fb'), rail: Array.from(bd.querySelectorAll<HTMLButtonElement>('.rail button')), close: q('[data-a=x]'), win: q('.card'), menu: q('.menu'), max: q('[data-a=max]') },
-    geo: { x: 0, y: 0, w: 0, h: 0 }, maximized: false, busy: false,
+    geo: { x: 0, y: 0, w: 0, h: 0 }, maximized: readMax(), busy: false,
     onKey: () => undefined, onResize: () => undefined,
   };
   s.onKey = (e) => {
@@ -271,7 +278,7 @@ export function openOverlay(page: OverlayPage, hash?: string): void {
 
 /** Test/automation hooks. */
 export function getOverlayGeometry(): Geo | null { return st ? { ...st.geo } : null; }
-export function setOverlayGeometry(g: Geo): void { if (st) { const { vw, vh } = vp(); st.maximized = false; setGeo(st, clampGeo(g, vw, vh), true); } }
+export function setOverlayGeometry(g: Geo): void { if (st) { const { vw, vh } = vp(); st.maximized = false; writeMax(false); setGeo(st, clampGeo(g, vw, vh), true); } }
 
 export function closeOverlay(): void {
   const s = st;

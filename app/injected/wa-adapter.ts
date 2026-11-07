@@ -4,7 +4,7 @@ import {
   BRIDGE_CHANNEL, type ArchivedMsg, type BridgeEnvelope, type BridgeRequest, type BridgeResponse,
   type ActivityChat, type ActivityScanResult, type ChatInfo, type LoadEarlierResult, type PingResult,
   type RegisteredResult, type GroupInfo, type GroupMember, type GroupsListResult, type GroupMembersResult,
-  type LabelInfo, type LabelChat, type LabelsListResult, type LabelChatsResult, type SendResult, type ProbeItem, type ProbeResult,
+  type ChatContact, type ChatsContactsResult, type LabelInfo, type LabelChat, type LabelsListResult, type LabelChatsResult, type SendResult, type ProbeItem, type ProbeResult,
 } from '../shared/messages';
 import { insertIntoComposer } from '../content/composer-insert';
 import type { InboxItem } from '../shared/autoreply-types';
@@ -258,6 +258,27 @@ async function phoneOf(p: Any): Promise<string | null> {
   return null;
 }
 
+/** Chat list with resolved phone numbers (CRM import). Never throws; chats without readable phone get phone null. */
+async function chatContacts(): Promise<ChatsContactsResult> {
+  if (!store.collections?.Chat) return { unavailable: true, reason: 'store' };
+  const chats: ChatContact[] = [];
+  for (const c of chatsColl()) {
+    try {
+      const id = wid(c?.id);
+      if (!id || id.includes('broadcast') || id.startsWith('status@') || id.endsWith('@newsletter')) continue;
+      const isGroup = id.endsWith('@g.us') || !!c.isGroup;
+      let phone: string | null = null;
+      if (!isGroup) {
+        if (/@(c\.us|s\.whatsapp\.net)$/.test(id)) phone = digits(id.split('@')[0]) || null;
+        else phone = await phoneOf({ id: c.id, contact: c.contact, title: c.formattedTitle ?? c.name });
+      }
+      const ts = typeof c.t === 'number' ? c.t : 0;
+      chats.push({ chatId: id, name: String(c.formattedTitle ?? c.name ?? c.contact?.name ?? ''), phone, isGroup, unread: Number(c.unreadCount) || 0, lastTs: ts ? toMs(ts) : 0 });
+    } catch { /* skip */ }
+  }
+  return { accountId: accountId(), chats };
+}
+
 async function groupMembers(groupId: string): Promise<GroupMembersResult> {
   if (!store.collections?.Chat) return { unavailable: true, reason: 'store' };
   const chat = findChat(groupId);
@@ -495,6 +516,20 @@ async function openChat(chat: Any): Promise<boolean> {
   } catch { /* ignore */ }
   return false;
 }
+/**
+ * Open a chat room (what the user does by clicking it in the chat list).
+ * 1) WhatsApp's own command (no reload). 2) Deep link `/send?phone=` (reloads the page) only when a real phone number is known.
+ */
+async function openChatById(chatId: string, phone?: string): Promise<{ ok: boolean; method?: string; error?: string }> {
+  let chat = findChat(chatId);
+  if (!chat) { try { chat = await resolveChat(chatId); } catch { /* not resolvable */ } }
+  const d = digits(phone ?? (/@c\.us$/.test(chatId) ? chatId.split('@')[0] : ''));
+  if (!chat && d.length >= 8) { try { chat = await resolveChat(`${d}@c.us`); } catch { /* ignore */ } }
+  if (chat && (await openChat(chat))) return { ok: true, method: 'WAWebCmd' };
+  if (d.length >= 8) { location.assign(`https://web.whatsapp.com/send?phone=${d}`); return { ok: true, method: 'deep-link' }; }
+  return { ok: false, error: chat ? 'open-failed' : 'chat-not-found' };
+}
+
 function clickSend(): boolean {
   const b = document.querySelector<HTMLElement>('footer button[aria-label="Kirim"], footer button[aria-label="Send"], footer [data-icon="send"], footer [data-icon="wds-ic-send-filled"]');
   const el = (b?.closest('button') as HTMLElement | null) ?? b;
@@ -626,6 +661,8 @@ async function handle(r: BridgeRequest): Promise<BridgeResponse> {
       const data: PingResult = { adapter: 'ready', store: !!store.collections?.Chat, accountId: accountId() };
       return { id: r.id, ok: true, data };
     }
+    case 'chats:contacts':
+      return { id: r.id, ok: true, data: await chatContacts().catch((): ChatsContactsResult => ({ unavailable: true, reason: 'error' })) };
     case 'chats:list':
       return { id: r.id, ok: true, data: chatsColl().map(info) };
     case 'chat:messages': {
@@ -639,6 +676,8 @@ async function handle(r: BridgeRequest): Promise<BridgeResponse> {
       return { id: r.id, ok: true, data: await loadEarlier(r.chatId) };
     case 'activity:scan':
       return { id: r.id, ok: true, data: scanActivity() };
+    case 'chat:open':
+      return { id: r.id, ok: true, data: await openChatById(String(r.chatId), r.phone) };
     case 'inbox:poll':
       return { id: r.id, ok: true, data: pollInbox(Number(r.sinceTs) || 0, r.includeGroups === true) };
     case 'send:text':

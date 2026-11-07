@@ -1,6 +1,6 @@
 import { db } from '../shared/db';
-import { DEFAULT_STAGES, type Contact, type CrmMsg } from '../shared/crm-types';
-import { csvFromRows, normalizeStages, phoneFromChatId, remapStage } from '../shared/crm-logic';
+import { DEFAULT_STAGES, type BulkResult, type Contact, type CrmMsg } from '../shared/crm-types';
+import { ContactIndex, csvFromRows, normalizeStages, phoneFromChatId, remapStage, resolveTarget } from '../shared/crm-logic';
 
 export const isCrmMsg = (m: unknown): m is CrmMsg =>
   !!m && typeof (m as { kind?: unknown }).kind === 'string' && (m as { kind: string }).kind.startsWith('crm:');
@@ -12,31 +12,76 @@ async function getStages(): Promise<string[]> {
   return p?.stages?.length ? p.stages : [...DEFAULT_STAGES];
 }
 
+
+type UpsertIn = Partial<Contact> & Pick<Contact, 'accountId' | 'chatId'>;
+
+/** Create/update one contact. Merges by phone: a 'manual' record is adopted by the real chat (and vice versa). */
+async function upsertOne(c: UpsertIn, stages: string[], idx: ContactIndex, mode: 'skip' | 'update'): Promise<{ action: 'created' | 'updated' | 'skipped'; contact: Contact }> {
+  const phoneIn = c.phone ?? phoneFromChatId(c.chatId);
+  const t = resolveTarget(idx, c.accountId, c.chatId, phoneIn);
+  const prev = t.prev;
+  if (prev && mode === 'skip') return { action: 'skipped', contact: prev };
+  const now = Date.now();
+  const merged: Contact = {
+    key: t.key,
+    accountId: t.accountId,
+    chatId: t.chatId,
+    name: c.name ?? prev?.name ?? '',
+    phone: c.phone ?? prev?.phone ?? phoneFromChatId(t.chatId),
+    stage: remapStage(c.stage ?? prev?.stage ?? stages[0], stages),
+    tags: c.tags ?? prev?.tags ?? [],
+    value: c.value ?? prev?.value ?? 0,
+    assignee: c.assignee ?? prev?.assignee ?? '',
+    optOut: c.optOut ?? prev?.optOut ?? false,
+    createdAt: prev?.createdAt ?? now,
+    updatedAt: now,
+    lastContactAt: c.lastContactAt !== undefined ? c.lastContactAt : (prev?.lastContactAt ?? null),
+  };
+  const source = c.source ?? prev?.source; if (source) merged.source = source;
+  const sd = c.sourceDetail ?? prev?.sourceDetail; if (sd) merged.sourceDetail = sd;
+  const note = c.note ?? prev?.note; if (note) merged.note = note;
+  if (t.adopt) {
+    const old = t.adopt.key;
+    await db.transaction('rw', db.contacts, db.notes, db.reminders, async () => {
+      await db.notes.where('contactKey').equals(old).modify({ contactKey: t.key });
+      await db.reminders.where('contactKey').equals(old).modify({ contactKey: t.key });
+      await db.contacts.delete(old);
+      await db.contacts.put(merged);
+    });
+    idx.remove(old);
+  } else await db.contacts.put(merged);
+  idx.remove(merged.key); idx.add(merged);
+  return { action: prev ? 'updated' : 'created', contact: merged };
+}
+
 export async function handleCrm(m: CrmMsg): Promise<unknown> {
   switch (m.kind) {
     case 'crm:contact:upsert': {
-      const c = m.contact;
-      const key = `${c.accountId}|${c.chatId}`;
       const stages = await getStages();
-      const now = Date.now();
-      const prev = await db.contacts.get(key);
-      const merged: Contact = {
-        key,
-        accountId: c.accountId,
-        chatId: c.chatId,
-        name: c.name ?? prev?.name ?? '',
-        phone: c.phone ?? prev?.phone ?? phoneFromChatId(c.chatId),
-        stage: remapStage(c.stage ?? prev?.stage ?? stages[0], stages),
-        tags: c.tags ?? prev?.tags ?? [],
-        value: c.value ?? prev?.value ?? 0,
-        assignee: c.assignee ?? prev?.assignee ?? '',
-        optOut: c.optOut ?? prev?.optOut ?? false,
-        createdAt: prev?.createdAt ?? now,
-        updatedAt: now,
-        lastContactAt: c.lastContactAt !== undefined ? c.lastContactAt : (prev?.lastContactAt ?? null),
-      };
-      await db.contacts.put(merged);
-      return merged;
+      const idx = new ContactIndex(await db.contacts.toArray());
+      return (await upsertOne(m.contact, stages, idx, 'update')).contact;
+    }
+    case 'crm:contact:bulk-upsert': {
+      const stages = await getStages();
+      const idx = new ContactIndex(await db.contacts.toArray());
+      const res: BulkResult = { created: 0, updated: 0, skipped: 0, errors: 0 };
+      for (const c of (Array.isArray(m.items) ? m.items : []).slice(0, 2000)) {
+        try {
+          if (!c || typeof c.accountId !== 'string' || typeof c.chatId !== 'string' || !c.chatId) { res.errors++; continue; }
+          const r = await upsertOne(c, stages, idx, m.mode === 'skip' ? 'skip' : 'update');
+          if (r.action === 'created') res.created++; else if (r.action === 'updated') res.updated++; else res.skipped++;
+        } catch { res.errors++; }
+      }
+      return res;
+    }
+    case 'crm:contact:bulk-delete': {
+      const keys = (Array.isArray(m.keys) ? m.keys : []).filter((k) => typeof k === 'string');
+      await db.transaction('rw', db.contacts, db.notes, db.reminders, async () => {
+        await db.notes.where('contactKey').anyOf(keys).delete();
+        await db.reminders.where('contactKey').anyOf(keys).delete();
+        await db.contacts.bulkDelete(keys);
+      });
+      return { ok: true, deleted: keys.length };
     }
     case 'crm:contact:list':
       return m.accountId ? db.contacts.where('accountId').equals(m.accountId).toArray() : db.contacts.toArray();
@@ -91,9 +136,9 @@ export async function handleCrm(m: CrmMsg): Promise<unknown> {
         const [notes, reminders, stages] = await Promise.all([db.notes.toArray(), db.reminders.toArray(), getStages()]);
         return { format: 'json', data: JSON.stringify({ stages, contacts, notes, reminders }, null, 2) };
       }
-      const header = ['akun', 'chat_id', 'nama', 'telepon', 'tahap', 'tag', 'nilai', 'penanggung_jawab', 'opt_out', 'dibuat', 'diperbarui', 'kontak_terakhir'];
+      const header = ['akun', 'chat_id', 'nama', 'telepon', 'tahap', 'tag', 'nilai', 'penanggung_jawab', 'opt_out', 'dibuat', 'diperbarui', 'kontak_terakhir', 'sumber', 'detail_sumber', 'catatan'];
       const iso = (t: number | null) => (t ? new Date(t).toISOString() : '');
-      const rows = contacts.map((c) => [c.accountId, c.chatId, c.name, c.phone, c.stage, c.tags.join(';'), c.value, c.assignee, c.optOut ? 'ya' : 'tidak', iso(c.createdAt), iso(c.updatedAt), iso(c.lastContactAt)]);
+      const rows = contacts.map((c) => [c.accountId, c.chatId, c.name, c.phone, c.stage, c.tags.join(';'), c.value, c.assignee, c.optOut ? 'ya' : 'tidak', iso(c.createdAt), iso(c.updatedAt), iso(c.lastContactAt), c.source ?? '', c.sourceDetail ?? '', c.note ?? '']);
       return { format: 'csv', data: csvFromRows(header, rows) };
     }
     default:

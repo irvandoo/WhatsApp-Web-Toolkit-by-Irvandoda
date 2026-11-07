@@ -1,3 +1,4 @@
+import { openChatRoom } from './openchat';
 import { useMemo, useState } from 'react';
 import type { Interaction, LeadKind, UnansweredRow } from '../shared/analytics-types';
 import type { Contact, CrmMsg } from '../shared/crm-types';
@@ -85,6 +86,8 @@ export function Unanswered({ interactions, contacts, accountNames, accountId, in
     </th>
   );
 
+  async function openRoom(r: UnansweredRow) { const x = await openChatRoom(r); toast(x.text); }
+
   async function remind(r: UnansweredRow) {
     const msg: CrmMsg = { kind: 'crm:reminder:add', contactKey: r.key, text: `Balas chat ${r.name || r.phone}`, dueAt: Date.now() + H };
     try { await chrome.runtime.sendMessage(msg); toast('Pengingat dibuat (1 jam lagi).'); } catch { toast('Gagal membuat pengingat.'); }
@@ -145,7 +148,7 @@ export function Unanswered({ interactions, contacts, accountNames, accountId, in
                 <td><span className={`badge b-${r.priority}`}>{PRIO_LABEL[r.priority]}</span></td>
                 <IntelCells l={intel.get(r.key)} />
                 <td>{r.stage ?? <span className="muted">-</span>}{r.tags?.map((t) => <span key={t} className="badge" style={{ marginLeft: 4, fontWeight: 400 }}>{t}</span>)}</td>
-                <td><button onClick={() => void remind(r)}>Buat pengingat</button></td>
+                <td><div className="row"><button className="pri" onClick={() => void openRoom(r)}>Buka chat</button><button onClick={() => void remind(r)}>Buat pengingat</button></div></td>
               </tr>
             ))}
             {!view.length && <tr><td colSpan={13} className="empty">Tidak ada yang cocok dengan filter.</td></tr>}

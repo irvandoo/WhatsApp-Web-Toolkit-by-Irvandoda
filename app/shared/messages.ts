@@ -15,12 +15,14 @@ export interface ArchivedMsg {
 }
 
 export type BridgeRequest =
+  | { id: string; type: 'chat:open'; chatId: string; phone?: string }
   | { id: string; type: 'groups:list' }
   | { id: string; type: 'groups:members'; groupId: string }
   | { id: string; type: 'labels:list' }
   | { id: string; type: 'labels:chats'; labelId: string }
   | { id: string; type: 'ping' }
   | { id: string; type: 'chats:list' }
+  | { id: string; type: 'chats:contacts' }
   | { id: string; type: 'chat:messages'; chatId: string }
   | { id: string; type: 'sync:loadEarlier'; chatId: string }
   | { id: string; type: 'memory:trim'; keepChatId?: string }
@@ -92,14 +94,20 @@ export interface LabelInfo { id: string; name: string; color?: string; count: nu
 export interface LabelChat { chatId: string; phone: string | null; name: string; isGroup: boolean }
 export type LabelsListResult = GroupsUnavailable | { unavailable?: false; labels: LabelInfo[] };
 export type LabelChatsResult = GroupsUnavailable | { unavailable?: false; labelId: string; chats: LabelChat[] };
+/** chats:contacts adapter op: chat list with resolved phone (CRM import). */
+export interface ChatContact { chatId: string; name: string; phone: string | null; isGroup: boolean; unread: number; lastTs: number }
+export type ChatsContactsResult = GroupsUnavailable | { unavailable?: false; accountId: string | null; chats: ChatContact[] };
+export type RcpPingResult = GroupsUnavailable | { unavailable?: false; accountId: string | null };
 /** Blast page -> background (rcp:groups / rcp:group-members reuse the grp relay). */
 export type RcpMsg =
   | { kind: 'rcp:labels' }
   | { kind: 'rcp:label-chats'; labelId: string }
   | { kind: 'rcp:groups' }
-  | { kind: 'rcp:group-members'; groupId: string };
+  | { kind: 'rcp:group-members'; groupId: string }
+  | { kind: 'rcp:chats' }
+  | { kind: 'rcp:ping' };
 /** background -> content (labels only; groups go through grp:exec). */
-export type RcpExec = { kind: 'rcp:exec'; op: 'labels' } | { kind: 'rcp:exec'; op: 'label-chats'; labelId: string };
+export type RcpExec = { kind: 'rcp:exec'; op: 'labels' } | { kind: 'rcp:exec'; op: 'label-chats'; labelId: string } | { kind: 'rcp:exec'; op: 'chats' } | { kind: 'rcp:exec'; op: 'ping' };
 
 /** send:text result (adapter >= silent sending). `method` = which strategy actually sent; `verified` = message seen in the chat afterwards. */
 export interface SendResult { ok: boolean; method: string; verified: boolean; error?: string }
@@ -118,3 +126,8 @@ export type DiagExec = { kind: 'diag:exec'; op: 'probe' } | { kind: 'diag:exec';
 export interface ExplainCheck { label: string; ok: boolean; detail: string }
 export interface ExplainItem { name: string; isGroup: boolean; text: string; ageMin: number; afterActivation: boolean; decision: string; reason: string }
 export interface ExplainResult { checks: ExplainCheck[]; items: ExplainItem[] }
+
+/** Analytics/CRM -> background -> WhatsApp tab: open a chat room. accountId lets the right tab answer (a tab holding another account refuses). */
+export type ChatOpenMsg = { kind: 'ui:chat-open'; accountId?: string; chatId: string; phone?: string };
+export type ChatOpenExec = { kind: 'chatx:open'; accountId?: string; chatId: string; phone?: string };
+export type ChatOpenResult = { ok: boolean; method?: string; error?: string };

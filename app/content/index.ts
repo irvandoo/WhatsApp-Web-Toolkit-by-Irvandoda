@@ -4,6 +4,7 @@ import { mountAccountReporter } from './account';
 import { mountPanel } from './panel';
 import { mountSlotStatus } from './slot-status';
 import { mountDiagBridge } from './diag-bridge';
+import { mountChatOpen } from './chat-open';
 import { mountPrivacyBlur } from './privacy-blur';
 import { mountCrmChatBar } from './crm-bridge';
 import { mountComposer } from './composer';
@@ -43,6 +44,7 @@ safe('mountOutbox', mountOutbox);
 safe('mountRecipientsBridge', mountRecipientsBridge);
 safe('mountSlotStatus', mountSlotStatus);
 safe('mountDiagBridge', mountDiagBridge);
+safe('mountChatOpen', mountChatOpen);
 safe('startStatus', startStatus);
 setTimeout(() => void maybeShowFirstRunToast(), 4000);
 

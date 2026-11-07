@@ -15,7 +15,16 @@ export interface Contact {
   createdAt: number;
   updatedAt: number;
   lastContactAt: number | null;
+  /** where the lead came from (additive; older records have none) */
+  source?: ContactSource;
+  /** label / group name or file name the lead was imported from */
+  sourceDetail?: string;
+  note?: string;
 }
+export type ContactSource = 'chat' | 'label' | 'manual' | 'csv' | 'grup' | 'bar';
+export const MANUAL_ACCOUNT = 'manual';
+export type BulkMode = 'skip' | 'update';
+export interface BulkResult { created: number; updated: number; skipped: number; errors: number }
 export interface CrmNote { id: string; contactKey: string; text: string; createdAt: number }
 export interface Reminder { id: string; contactKey: string; text: string; dueAt: number; done: boolean; notified: boolean }
 export interface PipelineConfig { id: 'default'; stages: string[] }
@@ -34,6 +43,8 @@ export interface Template {
 
 export type CrmMsg =
   | { kind: 'crm:contact:upsert'; contact: Partial<Contact> & Pick<Contact, 'accountId' | 'chatId'> }
+  | { kind: 'crm:contact:bulk-upsert'; items: (Partial<Contact> & Pick<Contact, 'accountId' | 'chatId'>)[]; mode: BulkMode }
+  | { kind: 'crm:contact:bulk-delete'; keys: string[] }
   | { kind: 'crm:contact:list'; accountId?: string }
   | { kind: 'crm:contact:delete'; key: string }
   | { kind: 'crm:note:add'; contactKey: string; text: string }

@@ -15,6 +15,7 @@ import { handleGrp, isGrpMsg } from './groups';
 import { handlePos, isPosMsg } from './pos';
 import { handleRcp, isRcpMsg } from './recipients-relay';
 import { handleDiag, isDiagMsg } from './diag';
+import { handleChatOpen, isChatOpenMsg } from './chatopen';
 import { handleOutbox, isOutboxMsg, registerOutboxAlarms } from './outbox';
 import { handleLi, isLiMsg } from './leadintel';
 import { handlePresets, isPresetMsg } from './presets';
@@ -55,6 +56,7 @@ const MODULES: { is: (m: unknown) => boolean; handle: Handler }[] = [
   { is: isPosMsg as (m: unknown) => boolean, handle: handlePos as Handler },
   { is: isRcpMsg as (m: unknown) => boolean, handle: handleRcp as Handler },
   { is: isDiagMsg as (m: unknown) => boolean, handle: handleDiag as Handler },
+  { is: isChatOpenMsg as (m: unknown) => boolean, handle: handleChatOpen as Handler },
   { is: isOutboxMsg as (m: unknown) => boolean, handle: handleOutbox as Handler },
   { is: isLiMsg as (m: unknown) => boolean, handle: handleLi as Handler },
   { is: isPresetMsg as (m: unknown) => boolean, handle: handlePresets as Handler },

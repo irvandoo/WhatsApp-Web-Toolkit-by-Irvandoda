@@ -1,3 +1,4 @@
+import { openChatRoom } from './openchat';
 import { useMemo } from 'react';
 import type { Interaction } from '../shared/analytics-types';
 import type { CrmMsg } from '../shared/crm-types';
@@ -9,6 +10,8 @@ import { downloadCsv, fmtDateTime, PRIO_LABEL, stamp } from './util';
 interface Props { intel: Map<string, LeadIntel>; interactions: Interaction[]; accountId: string; includeGroups: boolean; accountNames: Map<string, string>; toast: (m: string) => void }
 
 function Table({ rows, accountNames, toast, empty }: { rows: LeadIntel[]; accountNames: Map<string, string>; toast: (m: string) => void; empty: string }) {
+  async function openRoom(l: LeadIntel) { const x = await openChatRoom(l); toast(x.text); }
+
   async function remind(l: LeadIntel) {
     const msg: CrmMsg = { kind: 'crm:reminder:add', contactKey: l.key, text: `Follow up ${l.name || l.phone}: ${l.reason}`, dueAt: Date.now() + 3600e3 };
     try { await chrome.runtime.sendMessage(msg); toast('Pengingat dibuat (1 jam lagi).'); } catch { toast('Gagal membuat pengingat.'); }
@@ -30,7 +33,7 @@ function Table({ rows, accountNames, toast, empty }: { rows: LeadIntel[]; accoun
               <td><span className={`badge b-${l.followUpPriority}`}>{PRIO_LABEL[l.followUpPriority]}</span></td>
               <td className="wrap">{l.reason}</td><td className="wrap">{l.nextAction}</td>
               <td>{l.lastActivityTs ? `${l.lastSender === 'in' ? 'Mereka' : 'Kita'}, ${fmtDateTime(l.lastActivityTs)}` : '-'}</td>
-              <td><button onClick={() => void remind(l)}>Buat pengingat</button></td>
+              <td><div className="row"><button className="pri" onClick={() => void openRoom(l)}>Buka chat</button><button onClick={() => void remind(l)}>Buat pengingat</button></div></td>
             </tr>
           ))}
           {!rows.length && <tr><td colSpan={11} className="empty">{empty}</td></tr>}
