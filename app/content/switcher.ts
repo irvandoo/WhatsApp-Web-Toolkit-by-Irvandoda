@@ -20,11 +20,36 @@ export async function currentSlot(): Promise<Slot> {
   return (await list()).find((s) => s.id === id) ?? { ...defaultSlot(), id, label: id };
 }
 
+const SWITCHED_KEY = 'wwt-switched';
+
+/** Small toast (own shadow DOM) so switching feels instant and the user knows what happens next. */
+function showNotice(text: string, ms: number, busy = false): void {
+  try {
+    document.getElementById('wwt-notice')?.remove();
+    const host = document.createElement('div');
+    host.id = 'wwt-notice';
+    const root = host.attachShadow({ mode: 'closed' });
+    const st = document.createElement('style');
+    st.textContent = `.n{position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:2147483600;max-width:min(92vw,520px);padding:10px 16px;border-radius:12px;font:13px/1.45 system-ui,sans-serif;background:#fbfcfb;color:#26332e;border:1px solid #e3e9e6;box-shadow:0 6px 24px rgba(38,51,46,.16);display:flex;gap:10px;align-items:center}@media(prefers-color-scheme:dark){.n{background:#1b2420;color:#dfe8e3;border-color:#2d3a34}}.s{width:14px;height:14px;border-radius:50%;border:2px solid #3fae6b;border-top-color:transparent;animation:r .8s linear infinite;flex:none}@keyframes r{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.s{animation:none}}`;
+    const box = document.createElement('div');
+    box.className = 'n';
+    box.setAttribute('role', 'status');
+    if (busy) { const sp = document.createElement('i'); sp.className = 's'; box.append(sp); }
+    const t = document.createElement('span');
+    t.textContent = text;
+    box.append(t);
+    root.append(st, box);
+    document.documentElement.appendChild(host);
+    if (ms > 0) setTimeout(() => host.remove(), ms);
+  } catch { /* never block switching */ }
+}
+
 export function switchTo(sid: string): void {
   if (sid !== DEFAULT_SID && !isValidSid(sid)) return;
-  try { sessionStorage.setItem(SID_KEY, sid); } catch { return; }
+  try { sessionStorage.setItem(SID_KEY, sid); sessionStorage.setItem(SWITCHED_KEY, sid); } catch { return; }
+  showNotice('Membuka akun… halaman akan dimuat ulang', 0, true);
   // Give the touch a brief chance to reach the background, then reload into the new namespace.
-  void Promise.race([send({ kind: 'slot:touch', id: sid }), new Promise((r) => setTimeout(r, 250))]).finally(() => location.reload());
+  void Promise.race([send({ kind: 'slot:touch', id: sid }), new Promise((r) => setTimeout(r, 120))]).finally(() => location.reload());
 }
 
 /**
@@ -55,6 +80,13 @@ export async function purgeSlotData(sid: string): Promise<number> {
 /** Once the adapter reports an account id, bind it to the current slot (retries until known, ~10 min). */
 export function mountSlotBinding(): void {
   const sid = currentSlotId();
+  // just switched here: confirm which account is active and what to do if WhatsApp shows a QR code
+  try {
+    if (sessionStorage.getItem(SWITCHED_KEY)) {
+      sessionStorage.removeItem(SWITCHED_KEY);
+      void currentSlot().then((s) => showNotice(`Akun aktif: ${s.label}. Jika muncul kode QR, scan lewat HP: Pengaturan → Perangkat tertaut.`, 9000));
+    }
+  } catch { /* storage blocked */ }
   let tries = 0;
   const t = window.setInterval(async () => {
     if (!alive() || ++tries > 120) return clearInterval(t);

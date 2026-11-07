@@ -109,6 +109,8 @@ export function mountPanel(): void {
   wrap.append(dockEl, fab, panel);
   root.append(h('style', {}, PANEL_CSS), h('style', {}, FAB_DOT_CSS), wrap);
   document.documentElement.appendChild(host);
+  // WhatsApp re-renders aggressively around login/QR transitions: keep our UI attached.
+  window.setInterval(() => { try { if (!host.isConnected) document.documentElement.appendChild(host); } catch { /* ignore */ } }, 2000);
 
   const say = (s: string) => { live.textContent = s; };
   const btn = (label: string, ic: string | null, cls = '') => {

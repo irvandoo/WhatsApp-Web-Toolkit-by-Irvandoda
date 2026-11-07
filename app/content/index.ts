@@ -20,25 +20,30 @@ import { RUN_KEY, normalizeRunState } from '../shared/runmode';
 import { IS_FULL } from '../shared/credit';
 import { AR_GLOBAL_KEY } from '../shared/autoreply-types';
 
+/** One failing module must never stop the others (especially the dock/panel) from appearing. */
+function safe(name: string, fn: () => void): void {
+  try { fn(); } catch (e) { console.warn(`[WWT] modul "${name}" gagal dimuat:`, e); }
+}
+
 document.documentElement.dataset.wwt = CREDIT.nickname;
 void initRunGate();
 void ensureRunState();
-installMemorySaver();
-mountPrivacyBlur();
-mountPanel();
-mountAccountReporter();
-mountCrmChatBar();
-mountComposer();
-mountTracker();
-mountSlotBinding();
-mountAutoReply();
-mountGroupsBridge();
-mountPosBridge();
-mountOutbox();
-mountRecipientsBridge();
-mountSlotStatus();
-mountDiagBridge();
-startStatus();
+safe('installMemorySaver', installMemorySaver);
+safe('mountPrivacyBlur', mountPrivacyBlur);
+safe('mountPanel', mountPanel);
+safe('mountAccountReporter', mountAccountReporter);
+safe('mountCrmChatBar', mountCrmChatBar);
+safe('mountComposer', mountComposer);
+safe('mountTracker', mountTracker);
+safe('mountSlotBinding', mountSlotBinding);
+safe('mountAutoReply', mountAutoReply);
+safe('mountGroupsBridge', mountGroupsBridge);
+safe('mountPosBridge', mountPosBridge);
+safe('mountOutbox', mountOutbox);
+safe('mountRecipientsBridge', mountRecipientsBridge);
+safe('mountSlotStatus', mountSlotStatus);
+safe('mountDiagBridge', mountDiagBridge);
+safe('startStatus', startStatus);
 setTimeout(() => void maybeShowFirstRunToast(), 4000);
 
 /** First run: persist the safe defaults once. Auto-reply is armed only if the user already had it switched on (upgrade). */
