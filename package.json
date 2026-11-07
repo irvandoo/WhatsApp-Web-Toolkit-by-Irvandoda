@@ -8,6 +8,7 @@
     "dev": "vite",
     "build:store": "node scripts/clean-root.mjs && tsc --noEmit && vite build --mode store",
     "build:full": "tsc --noEmit && vite build --mode full",
+    "package:store": "npm run build:store && node scripts/package-store.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

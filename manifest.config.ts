@@ -12,7 +12,7 @@ export default defineManifest({
   action: { default_popup: 'popup/index.html' },
   options_page: 'options/index.html',
   background: { service_worker: 'background/index.ts', type: 'module' },
-  permissions: ['storage', 'alarms', 'scripting', 'unlimitedStorage', 'notifications'],
+  permissions: ['storage', 'alarms', 'unlimitedStorage', 'notifications'],
   host_permissions: ['https://web.whatsapp.com/*'],
   content_scripts: [
     { matches: ['https://web.whatsapp.com/*'], js: ['content/index.ts'], run_at: 'document_idle' },
