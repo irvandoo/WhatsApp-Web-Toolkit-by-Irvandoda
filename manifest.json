@@ -60,11 +60,11 @@
         "assets/autoreply-types-Df-z_QjU.js",
         "assets/analytics-logic-CQSGZEo7.js",
         "assets/lead-intel-logic-Eys90P2A.js",
-        "assets/outbox-logic-CbgUiCYU.js",
+        "assets/outbox-logic-Sog_cEKH.js",
         "assets/template-engine-BoGLHE2L.js",
         "assets/wa-format-Cxt_uRRu.js",
         "assets/crm-types-BrsAoK90.js",
-        "assets/index.ts-DLGwt54W.js",
+        "assets/index.ts-CsQQbVqN.js",
         "assets/virtual-session.js-CWgDXvAI.js",
         "assets/wa-adapter.ts-0Z1W375E.js"
       ],
@@ -74,7 +74,7 @@
   "content_scripts": [
     {
       "js": [
-        "assets/index.ts-loader-B0pKCKAV.js"
+        "assets/index.ts-loader-CgRn32YX.js"
       ],
       "matches": [
         "https://web.whatsapp.com/*"

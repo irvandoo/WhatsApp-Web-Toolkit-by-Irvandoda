@@ -133,17 +133,55 @@ function RecipientPreview({ list }: { list: Recipient[] }) {
 }
 
 // ---------------- Wizard ----------------
+type Unit = 's' | 'm' | 'h';
+const UNIT_SEC: Record<Unit, number> = { s: 1, m: 60, h: 3600 };
+/** Pick a readable unit for a value in seconds (3600 -> 1 jam, 90 -> 90 detik). */
+const bestUnit = (sec: number): Unit => (sec >= 3600 && sec % 3600 === 0 ? 'h' : sec >= 60 && sec % 60 === 0 ? 'm' : 's');
+
+/** Duration entered as number + unit (detik / menit / jam); always reported in seconds. */
+function DurationInput({ label, sec, onChange }: { label: string; sec: number; onChange: (sec: number) => void }) {
+  const [unit, setUnit] = useState<Unit>(bestUnit(sec));
+  const shown = Math.round((sec / UNIT_SEC[unit]) * 100) / 100;
+  return (
+    <label className="f">{label}
+      <span className="row" style={{ flexWrap: 'nowrap' }}>
+        <input type="number" min={0} step="any" value={shown} onChange={(e) => onChange(Math.max(0, Math.round(Number(e.target.value) * UNIT_SEC[unit])))} aria-label={`${label} (angka)`} />
+        <select value={unit} onChange={(e) => setUnit(e.target.value as Unit)} aria-label={`${label} (satuan)`}>
+          <option value="s">detik</option><option value="m">menit</option><option value="h">jam</option>
+        </select>
+      </span>
+    </label>
+  );
+}
+const DAY_NAMES = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+
 function SafetyForm({ s, set }: { s: SafetySettings; set: (v: SafetySettings) => void }) {
   const num = (k: keyof SafetySettings) => (e: React.ChangeEvent<HTMLInputElement>) => set({ ...s, [k]: Number(e.target.value) });
   return (
     <div className="grid">
-      <label className="f">Jeda minimum (detik, min 8)<input type="number" min={8} value={s.delayMinSec} onChange={num('delayMinSec')} /></label>
-      <label className="f">Jeda maksimum (detik)<input type="number" min={8} value={s.delayMaxSec} onChange={num('delayMaxSec')} /></label>
+      <DurationInput label="Jeda minimum antar pesan (min 8 detik)" sec={s.delayMinSec} onChange={(v) => set({ ...s, delayMinSec: v, delayMaxSec: Math.max(v, s.delayMaxSec) })} />
+      <DurationInput label="Jeda maksimum antar pesan (maks 24 jam)" sec={s.delayMaxSec} onChange={(v) => set({ ...s, delayMaxSec: v })} />
+      <p className="mut" style={{ gridColumn: '1 / -1', margin: 0 }}>Jeda tiap pesan dipilih acak di antara minimum dan maksimum, bisa dalam detik, menit, atau jam. Angka di bawah 8 detik dinaikkan otomatis demi keamanan akun.</p>
       <label className="f">Maks. pesan per jam<input type="number" min={1} max={120} value={s.maxPerHour} onChange={num('maxPerHour')} /></label>
       <label className="f">Maks. pesan per hari<input type="number" min={1} max={1000} value={s.maxPerDay} onChange={num('maxPerDay')} /></label>
       <label className="chk"><input type="checkbox" checked={s.windowEnabled} onChange={(e) => set({ ...s, windowEnabled: e.target.checked })} /><span>Hanya kirim dalam jam kirim</span></label>
       <label className="f">Dari jam<input type="time" value={s.windowFrom} disabled={!s.windowEnabled} onChange={(e) => set({ ...s, windowFrom: e.target.value })} /></label>
       <label className="f">Sampai jam<input type="time" value={s.windowTo} disabled={!s.windowEnabled} onChange={(e) => set({ ...s, windowTo: e.target.value })} /></label>
+      <fieldset className="f" style={{ gridColumn: '1 / -1', border: 0, padding: 0, margin: 0 }}>
+        <legend>Hari kirim (semua dicentang = tiap hari)</legend>
+        <span className="row">{DAY_NAMES.map((n, i) => {
+          const on = !s.windowDays?.length || s.windowDays.includes(i);
+          return <label key={n} className="chk"><input type="checkbox" checked={on} onChange={(e) => {
+            const cur = new Set(s.windowDays?.length ? s.windowDays : [0, 1, 2, 3, 4, 5, 6]);
+            if (e.target.checked) cur.add(i); else cur.delete(i);
+            set({ ...s, windowDays: cur.size === 0 || cur.size === 7 ? undefined : [...cur].sort() });
+          }} /><span>{n}</span></label>;
+        })}</span>
+      </fieldset>
+      <label className="f">Berhenti kirim setelah tanggal &amp; jam (opsional)
+        <input type="datetime-local" value={s.endAt ? toLocalInput(s.endAt) : ''} onChange={(e) => { const t = new Date(e.target.value).getTime(); set({ ...s, endAt: Number.isFinite(t) && e.target.value ? t : undefined }); }} />
+        <small className="mut">Pesan yang jatuh temponya setelah ini tidak dikirim. Waktu mulai diatur di langkah 4 (Tinjau &amp; mulai).</small>
+      </label>
       <label className="chk"><input type="checkbox" checked={s.warmup} onChange={(e) => set({ ...s, warmup: e.target.checked })} />
         <span><b>Mode pemanasan</b> (disarankan untuk akun baru): batas harian bertahap {WARMUP_CAPS.join(' → ')} pesan pada hari 1-{WARMUP_CAPS.length}.</span></label>
       <label className="chk"><input type="checkbox" checked={s.checkRegistered} onChange={(e) => set({ ...s, checkRegistered: e.target.checked })} /><span>Cek nomor terdaftar WhatsApp sebelum kirim pertama</span></label>

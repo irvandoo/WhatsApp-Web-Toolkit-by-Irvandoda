@@ -15,6 +15,8 @@ export interface SafetySettings {
   warmup: boolean;          // "Mode pemanasan", default true
   checkRegistered: boolean; // check:registered before first contact, default true
   pauseAfterErrors: number; // consecutive transient errors -> auto pause, default 3
+  windowDays?: number[];    // allowed weekdays 0=Minggu..6=Sabtu; undefined/empty = every day
+  endAt?: number;           // epoch ms; nothing is sent after this moment (undefined = no end date)
 }
 
 export interface Recipient {

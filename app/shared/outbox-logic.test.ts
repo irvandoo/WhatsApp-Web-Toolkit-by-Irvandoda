@@ -238,3 +238,49 @@ describe('log csv', () => {
     expect(csv).toContain("'=cmd");
   });
 });
+
+import { checkCaps as _cc, dayAllowed as _da, nextOpen as _no, normalizeSafety as _ns, placeSend as _ps } from './outbox-logic';
+describe('jeda jam/menit/detik, hari kirim, tanggal berakhir', () => {
+  const at = (y: number, mo: number, d: number, h = 10, mi = 0) => new Date(y, mo - 1, d, h, mi).getTime();
+  it('jeda hingga 24 jam diterima, di bawah 8 detik dinaikkan', () => {
+    expect(_ns({ delayMinSec: 7200, delayMaxSec: 3 * 3600 }).delayMaxSec).toBe(10800);
+    expect(_ns({ delayMinSec: 86_400, delayMaxSec: 90_000 }).delayMaxSec).toBe(86_400);
+    expect(_ns({ delayMinSec: 2 }).delayMinSec).toBe(8);
+  });
+  it('windowDays dinormalkan: semua hari = tanpa batas, nilai aneh dibuang', () => {
+    expect(_ns({ windowDays: [1, 2, 3, 4, 5] }).windowDays).toEqual([1, 2, 3, 4, 5]);
+    expect(_ns({ windowDays: [0, 1, 2, 3, 4, 5, 6] }).windowDays).toBeUndefined();
+    expect(_ns({ windowDays: [9, -1, 1.5] as number[] }).windowDays).toBeUndefined();
+    expect(_ns({ windowDays: [1, 1, 3] }).windowDays).toEqual([1, 3]);
+  });
+  it('endAt hanya dipakai bila angka valid', () => {
+    expect(_ns({ endAt: 123456 }).endAt).toBe(123456);
+    expect(_ns({ endAt: NaN }).endAt).toBeUndefined();
+    expect(_ns({}).endAt).toBeUndefined();
+  });
+  it('nextOpen melompati hari yang tidak dipilih (Senin-Jumat saja, Sabtu -> Senin)', () => {
+    const s = _ns({ windowDays: [1, 2, 3, 4, 5], windowEnabled: true, windowFrom: '08:00', windowTo: '20:00' });
+    const sat = at(2026, 11, 7, 10); // 7 Nov 2026 = Sabtu
+    expect(new Date(sat).getDay()).toBe(6);
+    const t = _no(sat, s);
+    expect(new Date(t).getDay()).toBe(1);
+    expect(new Date(t).getHours()).toBe(8);
+    expect(_da(sat, s)).toBe(false);
+  });
+  it('placeSend menghormati hari kirim', () => {
+    const s = _ns({ windowDays: [1], windowEnabled: false });
+    const t = _ps(at(2026, 11, 7, 10), s, [], at(2026, 11, 7, 10));
+    expect(new Date(t).getDay()).toBe(1);
+  });
+  it('checkCaps menolak di hari non-kirim dan setelah tanggal berakhir', () => {
+    const s = _ns({ windowDays: [1], windowEnabled: false });
+    const sat = at(2026, 11, 7, 10);
+    const a = _cc(s, sat, []);
+    expect(a.ok).toBe(false);
+    expect(a.reason).toMatch(/bukan hari kirim/);
+    const e = _cc(_ns({ endAt: sat - 1000, windowEnabled: false }), sat, []);
+    expect(e.ok).toBe(false);
+    expect(e.reason).toMatch(/berakhir/);
+    expect(_cc(_ns({ windowEnabled: false }), sat, []).ok).toBe(true);
+  });
+});

@@ -14,7 +14,7 @@ export const DEFAULT_SAFETY: SafetySettings = {
   windowEnabled: true, windowFrom: '08:00', windowTo: '20:00',
   warmup: true, checkRegistered: true, pauseAfterErrors: 3,
 };
-export const SAFETY_LIMITS = { delayMinFloor: 8, delayMaxCeil: 7200, hourCeil: 120, dayCeil: 1000 } as const;
+export const SAFETY_LIMITS = { delayMinFloor: 8, delayMaxCeil: 86_400, hourCeil: 120, dayCeil: 1000 } as const;
 
 const clampInt = (v: unknown, lo: number, hi: number, d: number): number => {
   const n = Math.round(Number(v));
@@ -33,6 +33,12 @@ const atMinutes = (ts: number, addDays: number, min: number): number => {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + addDays, Math.floor(min / 60), min % 60).getTime();
 };
 
+function normalizeDays(v: unknown): { windowDays?: number[] } {
+  if (!Array.isArray(v)) return {};
+  const days = [...new Set(v.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))].sort();
+  return days.length && days.length < 7 ? { windowDays: days } : {};
+}
+
 /** Clamp and fill safety settings. Hard floors are enforced here (min delay 8s, ceilings). */
 export function normalizeSafety(p: Partial<SafetySettings> = {}): SafetySettings {
   const d = DEFAULT_SAFETY;
@@ -48,7 +54,24 @@ export function normalizeSafety(p: Partial<SafetySettings> = {}): SafetySettings
     warmup: p.warmup ?? d.warmup,
     checkRegistered: p.checkRegistered ?? d.checkRegistered,
     pauseAfterErrors: clampInt(p.pauseAfterErrors, 1, 10, d.pauseAfterErrors),
+    ...normalizeDays(p.windowDays),
+    ...(typeof p.endAt === 'number' && Number.isFinite(p.endAt) && p.endAt > 0 ? { endAt: Math.round(p.endAt) } : {}),
   };
+}
+
+/** True when `ts` falls on an allowed weekday (no restriction when windowDays is unset). */
+export const dayAllowed = (ts: number, s: Pick<SafetySettings, 'windowDays'>): boolean =>
+  !s.windowDays?.length || s.windowDays.includes(new Date(ts).getDay());
+
+/** ts itself when sending is allowed (weekday + time window), otherwise the next moment it is. */
+export function nextOpen(ts: number, s: SafetySettings): number {
+  let t = ts;
+  for (let i = 0; i < 16; i++) {
+    if (!dayAllowed(t, s)) { t = nextDayStart(t); continue; }
+    if (s.windowEnabled) { const w = nextWindowOpen(t, s.windowFrom, s.windowTo); if (w !== t) { t = w; continue; } }
+    return t;
+  }
+  return t;
 }
 
 export function inWindow(ts: number, from: string, to: string): boolean {
@@ -233,10 +256,8 @@ const countSince = (sorted: number[], from: number, to = Infinity): number => {
 /** Earliest time >= t that satisfies window + hourly + daily caps, given past/planned send times (ascending). */
 export function placeSend(t: number, s: SafetySettings, sent: number[], firstTs: number): number {
   for (let i = 0; i < 5000; i++) {
-    if (s.windowEnabled) {
-      const w = nextWindowOpen(t, s.windowFrom, s.windowTo);
-      if (w !== t) { t = w; continue; }
-    }
+    const w = nextOpen(t, s);
+    if (w !== t) { t = w; continue; }
     const inHour: number[] = [];
     for (let k = sent.length - 1; k >= 0 && sent[k] > t - HOUR; k--) if (sent[k] <= t) inHour.unshift(sent[k]);
     if (inHour.length >= s.maxPerHour) { t = inHour[inHour.length - s.maxPerHour] + HOUR; continue; }
@@ -252,8 +273,10 @@ export function checkCaps(s: SafetySettings, now: number, log: SendLogEntry[]): 
   const sent = autoSentTimes(log);
   const first = sent.length ? sent[0] : now;
   const last = sent.length ? sent[sent.length - 1] : 0;
-  if (s.windowEnabled && !inWindow(now, s.windowFrom, s.windowTo)) {
-    return { ok: false, reason: `Di luar jam kirim (${s.windowFrom}-${s.windowTo})`, retryAt: nextWindowOpen(now, s.windowFrom, s.windowTo) };
+  if (s.endAt && now > s.endAt) return { ok: false, reason: 'Melewati tanggal berakhir kampanye', retryAt: now + DAY };
+  const open = nextOpen(now, s);
+  if (open !== now) {
+    return { ok: false, reason: dayAllowed(now, s) ? `Di luar jam kirim (${s.windowFrom}-${s.windowTo})` : 'Hari ini bukan hari kirim', retryAt: open };
   }
   if (now - last < s.delayMinSec * 1000) return { ok: false, reason: 'Menunggu jeda antar pesan', retryAt: last + s.delayMinSec * 1000 };
   const at = placeSend(now, s, sent, first);
@@ -308,6 +331,7 @@ export function planCampaign(p: PlanInput): PlanResult {
     if (unresolved.length) { skipped.push({ phone, reason: `Variabel belum terisi: ${unresolved.map((u) => `{${u}}`).join(' ')}` }); continue; }
     const cand = items.length === 0 ? startAt : prev + randDelayMs(safety, rng);
     const due = p.mode === 'draft' ? cand : placeSend(cand, safety, sent, first);
+    if (safety.endAt && due > safety.endAt) { skipped.push({ phone, reason: 'Jatuh tempo setelah tanggal berakhir' }); continue; }
     prev = due;
     sent.push(due);
     items.push({ id: genId(), campaignId: p.id, phone, name: r.name, text, status: 'pending', dueAt: due, attempts: 0, createdAt: p.now, contactKey: r.contactKey });
