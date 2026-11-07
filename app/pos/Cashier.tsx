@@ -1,9 +1,12 @@
 import { useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
+import { usePersistentState } from '../shared/ui/persist';
+import { EMPTY_CASH_DRAFT, fromOrder, isCashDraft, type CashDraft } from './cashier-draft';
 import type { Contact } from '../shared/crm-types';
 import { computeTotals, fmtIdr, lineTotal } from '../shared/pos-logic';
 import {
   ORDER_STATUSES, PAY_LABEL, PAY_METHODS, STATUS_LABEL,
-  type DiscountType, type Order, type OrderItem, type OrderStatus, type Payment, type PayMethod, type PosSettings, type Product,
+  type Order, type OrderItem, type OrderStatus, type PosSettings, type Product,
 } from '../shared/pos-types';
 import { availableFor, creditFromOrder, isCodeProduct, repriceLine, resolveUnitPrice, stockShortfalls, totalStock, TYPE_LABEL, typeOf } from '../shared/pos-products-logic';
 import { ScrollTable } from '../shared/ui/ScrollTable';
@@ -14,18 +17,16 @@ interface Props { products: Product[]; contacts: Contact[]; settings: PosSetting
 
 export function Cashier({ products, contacts, settings, editing, onSaved, onCancel }: Props) {
   const e = editing;
-  const [items, setItems] = useState<OrderItem[]>(e?.items ?? []);
-  const [contactKey, setContactKey] = useState(e?.contactKey ?? '');
-  const [name, setName] = useState(e?.customerName ?? '');
-  const [phone, setPhone] = useState(e?.customerPhone ?? '');
-  const [dType, setDType] = useState<DiscountType>(e?.discountType ?? 'rp');
-  const [dVal, setDVal] = useState(e?.discountValue ?? 0);
-  const [shipping, setShipping] = useState(e?.shipping ?? 0);
-  const [taxPct, setTaxPct] = useState(e?.taxPct ?? settings.taxPct);
-  const [notes, setNotes] = useState(e?.notes ?? '');
-  const [method, setMethod] = useState<PayMethod>(e?.method ?? 'cash');
-  const [status, setStatus] = useState<OrderStatus>(e?.status ?? 'unpaid');
-  const [payments, setPayments] = useState<Payment[]>(e?.payments ?? []);
+  const [pd, setPd, ready] = usePersistentState<CashDraft>('pos.cashier.draft', EMPTY_CASH_DRAFT, isCashDraft);
+  const [ld, setLd] = useState<CashDraft>(() => fromOrder(e));
+  const d = e ? ld : pd;
+  const setD = e ? setLd : setPd;
+  const up = <K extends keyof CashDraft>(k: K) => (v: CashDraft[K] | ((p: CashDraft[K]) => CashDraft[K])) =>
+    setD((c) => ({ ...c, [k]: typeof v === 'function' ? (v as (p: CashDraft[K]) => CashDraft[K])(c[k]) : v }));
+  const { items, contactKey, name, phone, dType, dVal, shipping, notes, method, status, payments } = d;
+  const taxPct = d.taxPct ?? settings.taxPct;
+  const setItems = up('items'), setContactKey = up('contactKey'), setName = up('name'), setPhone = up('phone'), setDType = up('dType'), setDVal = up('dVal');
+  const setShipping = up('shipping'), setTaxPct = up('taxPct'), setNotes = up('notes'), setMethod = up('method'), setStatus = up('status'), setPayments = up('payments');
   const [payAmt, setPayAmt] = useState(0);
   const [q, setQ] = useState('');
   const [err, setErr] = useState('');
@@ -103,10 +104,12 @@ export function Cashier({ products, contacts, settings, editing, onSaved, onCanc
         status: asStatus ?? status, payments,
       };
       const o = e ? await send<Order>({ kind: 'pos:order:update', id: e.id, patch: body }) : await send<Order>({ kind: 'pos:order:create', order: body });
+      if (!e) flushSync(() => setPd(EMPTY_CASH_DRAFT));
       onSaved(o);
     } catch (x) { setErr(String((x as Error).message)); } finally { setBusy(false); }
   };
 
+  if (!e && !ready) return null;
   return (
     <div className="cash">
       <section className="panel">
@@ -199,7 +202,7 @@ export function Cashier({ products, contacts, settings, editing, onSaved, onCanc
         </div>
         {err && <p className="note err">{err}</p>}
         <div className="bar">
-          <button onClick={onCancel}>{e ? 'Batal ubah' : 'Reset'}</button>
+          <button onClick={() => { if (!e) flushSync(() => setPd(EMPTY_CASH_DRAFT)); onCancel(); }}>{e ? 'Batal ubah' : 'Reset'}</button>
           <span className="sp" />
           {!e && <button disabled={busy || !items.length} onClick={() => void save('draft')}>Simpan draft</button>}
           <button className="pri" disabled={busy || !items.length} onClick={() => void save()}>{e ? 'Simpan perubahan' : 'Simpan pesanan'}</button>

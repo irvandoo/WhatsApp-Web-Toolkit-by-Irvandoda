@@ -5,6 +5,7 @@ import { ALL_SECTIONS, accountLabelOf, buildReportModel, defaultSubtitle, HONEST
 import { buildWaReportText } from '../shared/report/wa-text';
 import { heatmapGrid } from '../shared/report/model';
 import type { Stats } from '../shared/stats-logic';
+import { usePersistentState } from '../shared/ui/persist';
 import { makePdf, makePng, makeXlsx, renderPreview, saveBlob, type Format, type OutFile } from './exporter';
 
 interface Props {
@@ -17,18 +18,17 @@ const FORMATS: [Format, string][] = [['xlsx', 'Excel (.xlsx)'], ['wa', 'Teks Wha
 const SECS: [keyof ReportSections, string][] = [['kpi', 'Ringkasan KPI'], ['charts', 'Grafik harian/mingguan/bulanan'], ['heatmap', 'Heatmap jam x hari'], ['unanswered', 'Belum Dibalas'], ['hot', 'Lead Panas'], ['interactions', 'Daftar interaksi'], ['stats', 'Statistik (insight, funnel, waktu balasan)']];
 const BIZ_KEY = 'wwt.report.business';
 const loadBiz = () => { try { return localStorage.getItem(BIZ_KEY) ?? ''; } catch { return ''; } };
-const saveBiz = (v: string) => { try { localStorage.setItem(BIZ_KEY, v); } catch { /* ignore */ } };
 
 export function ExportDialog(p: Props) {
   const accLabel = accountLabelOf(p.accountId, p.accountNames);
-  const [format, setFormat] = useState<Format>('xlsx');
-  const [sections, setSections] = useState<ReportSections>(ALL_SECTIONS);
-  const [title, setTitle] = useState('Laporan WhatsApp');
+  const [format, setFormat] = usePersistentState<Format>('analytics.export.format', 'xlsx', (v): v is Format => FORMATS.some(([k]) => k === v));
+  const [sections, setSections] = usePersistentState<ReportSections>('analytics.export.sections', ALL_SECTIONS, (v): v is ReportSections => !!v && typeof v === 'object' && Object.keys(ALL_SECTIONS).every((k) => typeof (v as Record<string, unknown>)[k] === 'boolean'));
+  const [title, setTitle] = usePersistentState('analytics.export.title', 'Laporan WhatsApp');
   const [subtitle, setSubtitle] = useState(() => defaultSubtitle(p.summary.range, accLabel));
   const [subEdited, setSubEdited] = useState(false);
-  const [business, setBusiness] = useState(loadBiz);
-  const [orientation, setOrientation] = useState<Orientation>('portrait');
-  const [topN, setTopN] = useState(10);
+  const [business, setBusiness] = usePersistentState('analytics.export.business', loadBiz());
+  const [orientation, setOrientation] = usePersistentState<Orientation>('analytics.export.orientation', 'portrait', (v): v is Orientation => v === 'portrait' || v === 'landscape');
+  const [topN, setTopN] = usePersistentState('analytics.export.topN', 10);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [pages, setPages] = useState(0);
@@ -36,7 +36,6 @@ export function ExportDialog(p: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => { if (!subEdited) setSubtitle(defaultSubtitle(p.summary.range, accLabel)); }, [p.summary.range, accLabel, subEdited]);
-  useEffect(() => { const t = setTimeout(() => saveBiz(business), 400); return () => clearTimeout(t); }, [business]);
 
   const model = useMemo(() => buildReportModel({
     summary: p.summary, prev: p.prev, unanswered: p.unanswered, hot: p.hot, interactions: p.interactions, events: p.events, includeGroups: p.includeGroups,

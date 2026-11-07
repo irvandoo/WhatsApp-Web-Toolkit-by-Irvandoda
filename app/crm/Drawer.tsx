@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { readPersisted, writePersisted } from '../shared/ui/persist';
 import { parseTags } from '../shared/crm-logic';
 import { MANUAL_ACCOUNT, type Contact, type CrmNote, type Reminder } from '../shared/crm-types';
 import { db } from '../shared/db';
@@ -30,6 +31,23 @@ export function Drawer({ contact, stages, assignees, tags: known, accountId, int
   const [rt, setRt] = useState('');
   const [rd, setRd] = useState('');
   const ref = useRef<HTMLElement>(null);
+  // draft of the quick add-contact form (new contact only): restored after a refresh, cleared once saved
+  const DRAFT = 'crm.draft.one';
+  const draftReady = useRef(false);
+  type Draft = { name: string; phone: string; stage: string; tags: string; value: string; assignee: string; note: string };
+  useEffect(() => {
+    if (!isNew) return;
+    void readPersisted<Draft | null>(DRAFT, null, (v): v is Draft => !!v && typeof v === 'object' && typeof (v as Draft).name === 'string').then((d) => {
+      if (d) { setName((x) => x || d.name); setPhone((x) => x || d.phone); setStage((x) => (stages.includes(d.stage) ? d.stage : x)); setTags((x) => x || d.tags); setValue((x) => x || d.value); setAssignee((x) => x || d.assignee); setNote((x) => x || d.note); }
+      draftReady.current = true;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!isNew || !draftReady.current) return;
+    const t = setTimeout(() => { if (draftReady.current) void writePersisted(DRAFT, { name, phone, stage, tags, value, assignee, note }); }, 300);
+    return () => clearTimeout(t);
+  }, [isNew, name, phone, stage, tags, value, assignee, note]);
   const key = contact?.key ?? '';
   const notes = useLive(() => (key ? db.notes.where('contactKey').equals(key).reverse().sortBy('createdAt') : Promise.resolve([] as CrmNote[])), [] as CrmNote[]);
   const reminders = useLive(() => (key ? db.reminders.where('contactKey').equals(key).sortBy('dueAt') : Promise.resolve([] as Reminder[])), [] as Reminder[]);
@@ -55,6 +73,7 @@ export function Drawer({ contact, stages, assignees, tags: known, accountId, int
         const chatId = `${ph}@c.us`;
         const r = await send<Contact | { ok: false; error: string }>({ kind: 'crm:contact:upsert', contact: { ...base, accountId: accountId || MANUAL_ACCOUNT, chatId, source: 'manual' } });
         if ((r as { error?: string }).error) { setErr(String((r as { error?: string }).error)); return; }
+        draftReady.current = false; void writePersisted(DRAFT, null);
         onMsg('Kontak ditambahkan.');
       } else {
         await send({ kind: 'crm:contact:upsert', contact: { ...base, accountId: contact.accountId, chatId: contact.chatId } });

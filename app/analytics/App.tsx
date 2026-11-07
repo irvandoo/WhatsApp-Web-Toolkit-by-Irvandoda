@@ -15,11 +15,16 @@ import { StatHighlights, StatsView } from './Stats';
 import { Icon, SectionTitle } from './Icons';
 import { Spark } from './Viz';
 import { fmtNum } from './util';
+import { clearPersisted, usePersistentState } from '../shared/ui/persist';
 
 const RANGES: [RangeKey, string][] = [['today', 'Hari ini'], ['week', 'Minggu'], ['month', 'Bulan'], ['year', 'Tahun'], ['all', 'Semua'], ['custom', 'Custom']];
 type Tab = 'ringkasan' | 'statistik' | 'belum' | 'hot' | 'laporan';
 const HASH_TAB: Record<string, Tab> = { ringkasan: 'ringkasan', statistik: 'statistik', stats: 'statistik', unanswered: 'belum', belum: 'belum', hot: 'hot', laporan: 'laporan' };
-const tabFromHash = (): Tab => HASH_TAB[location.hash.replace(/^#/, '')] ?? 'ringkasan';
+const hashTab = (): Tab | undefined => HASH_TAB[location.hash.replace(/^#/, '')];
+const tabFromHash = (): Tab => hashTab() ?? 'ringkasan';
+const isTab = (v: unknown): v is Tab => v === 'ringkasan' || v === 'statistik' || v === 'belum' || v === 'hot' || v === 'laporan';
+const isRange = (v: unknown): v is RangeKey => RANGES.some(([k]) => k === v);
+const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const NO_EVENTS: MsgEvent[] = [];
 const dateVal = (ts: number) => { const d = new Date(ts); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const startOf = (s: string) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d).getTime(); };
@@ -34,16 +39,24 @@ function Delta({ cur, prev, invert }: { cur: number; prev: number | null; invert
 }
 
 export function App() {
-  const [tab, setTab] = useState<Tab>(tabFromHash);
-  const [key, setKey] = useState<RangeKey>('month');
-  const [cFrom, setCFrom] = useState(() => dateVal(Date.now() - 7 * 86400e3));
-  const [cTo, setCTo] = useState(() => dateVal(Date.now()));
-  const [acc, setAcc] = useState('');
-  const [groups, setGroups] = useState(false);
+  const [tab, setTab, rTab] = usePersistentState<Tab>('analytics.tab', tabFromHash(), isTab);
+  const [key, setKey, rKey] = usePersistentState<RangeKey>('analytics.range', 'month', isRange);
+  const [cFrom, setCFrom, rFrom] = usePersistentState('analytics.custom.from', dateVal(Date.now() - 7 * 86400e3), isDate);
+  const [cTo, setCTo, rTo] = usePersistentState('analytics.custom.to', dateVal(Date.now()), isDate);
+  const [acc, setAcc, rAcc] = usePersistentState('analytics.account', '');
+  const [groups, setGroups, rGroups] = usePersistentState('analytics.groups', false);
+  const ready = rTab && rKey && rFrom && rTo && rAcc && rGroups;
+  const [resetN, setResetN] = useState(0);
   const [now, setNow] = useState(Date.now());
   const [msg, setMsg] = useState('');
   const [exporting, setExporting] = useState(false);
 
+  useEffect(() => { if (rTab) { const h = hashTab(); if (h) setTab(h); } }, [rTab, setTab]);
+  const resetView = () => {
+    setTab(hashTab() ?? 'ringkasan'); setKey('month'); setCFrom(dateVal(Date.now() - 7 * 86400e3)); setCTo(dateVal(Date.now())); setAcc(''); setGroups(false); setResetN((n) => n + 1);
+    void clearPersisted('analytics.'); void clearPersisted('unanswered.');
+    setMsg('Tampilan diatur ulang');
+  };
   useEffect(() => { const f = () => setTab(tabFromHash()); window.addEventListener('hashchange', f); return () => window.removeEventListener('hashchange', f); }, []);
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, []);
   useEffect(() => { if (!msg) return; const t = setTimeout(() => setMsg(''), 3000); return () => clearTimeout(t); }, [msg]);
@@ -95,11 +108,14 @@ export function App() {
   ];
 
   const fill = tab === 'belum' && hasData;
+  if (!ready) return <div className="page" />;
   return (
     <div className="page">
       <div className="head">
         <span className="logo"><Icon name="logo" /></span>
         <h1>Analitik<small>WhatsApp Web Toolkit by Irvandoda</small></h1>
+        <span className="sp" />
+        <button className="linkbtn" onClick={resetView} title="Kembalikan rentang, filter, dan tab ke pengaturan awal">Atur ulang tampilan</button>
       </div>
       <div className="bar">
         <div className="seg" role="group" aria-label="Rentang waktu">
@@ -163,7 +179,7 @@ export function App() {
 
       {tab === 'belum' && hasData && (
         <div role="tabpanel">
-          <Unanswered interactions={interactions} contacts={contacts} accountNames={accountNames} accountId={acc} includeGroups={groups} now={now} intel={intel} toast={setMsg} />
+          <Unanswered interactions={interactions} contacts={contacts} accountNames={accountNames} accountId={acc} includeGroups={groups} now={now} intel={intel} toast={setMsg} resetSignal={resetN} />
         </div>
       )}
 

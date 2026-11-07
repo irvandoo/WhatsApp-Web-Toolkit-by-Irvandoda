@@ -11,13 +11,15 @@ import { useLeadIntel } from '../shared/lead-intel-live';
 import { openChatRoom } from '../analytics/openchat';
 import { AddDialog } from './AddDialog';
 import { Drawer, srcLabel } from './Drawer';
+import { clearPersisted, usePersistentState } from '../shared/ui/persist';
 import { download, idr, isUn, rcp, send, tick, useLive } from './util';
 
 type Tab = 'kanban' | 'daftar' | 'pengingat' | 'pipeline';
 type OptF = 'all' | 'yes' | 'no';
 
 export function App() {
-  const [tab, setTab] = useState<Tab>('kanban');
+  const [tab, setTab, rTab] = usePersistentState<Tab>('crm.view', 'kanban', (v): v is Tab => v === 'kanban' || v === 'daftar' || v === 'pengingat' || v === 'pipeline');
+  const [resetN, setResetN] = useState(0);
   const contacts = useLive(() => db.contacts.toArray(), [] as Contact[]);
   const reminders = useLive(() => db.reminders.toArray(), [] as Reminder[]);
   const stages = useLive(async () => (await db.pipeline.get('default'))?.stages ?? [...DEFAULT_STAGES], [...DEFAULT_STAGES] as string[]);
@@ -26,15 +28,15 @@ export function App() {
   const [now, setNow] = useState(Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, []);
   const intel = useLeadIntel(interactions, contacts, now);
-  const [hotOnly, setHotOnly] = useState(false);
-  const [byEng, setByEng] = useState(false);
-  const [acc, setAcc] = useState('');
-  const [tag, setTag] = useState('');
-  const [q, setQ] = useState('');
-  const [stageF, setStageF] = useState('');
-  const [assF, setAssF] = useState('');
-  const [optF, setOptF] = useState<OptF>('all');
-  const [srcF, setSrcF] = useState('');
+  const [hotOnly, setHotOnly] = usePersistentState('crm.filters.hot', false);
+  const [byEng, setByEng] = usePersistentState('crm.filters.byEng', false);
+  const [acc, setAcc] = usePersistentState('crm.filters.account', '');
+  const [tag, setTag] = usePersistentState('crm.filters.tag', '');
+  const [q, setQ] = usePersistentState('crm.filters.q', '');
+  const [stageF, setStageF] = usePersistentState('crm.filters.stage', '');
+  const [assF, setAssF] = usePersistentState('crm.filters.assignee', '');
+  const [optF, setOptF] = usePersistentState<OptF>('crm.filters.opt', 'all', (v): v is OptF => v === 'all' || v === 'yes' || v === 'no');
+  const [srcF, setSrcF] = usePersistentState('crm.filters.source', '');
   const [adding, setAdding] = useState<'' | 'dialog' | 'one'>('');
   const [detail, setDetail] = useState<Contact | null>(null);
   const [msg, setMsg] = useState('');
@@ -52,6 +54,7 @@ export function App() {
   const filtered = useMemo(() => (stageF ? noStage.filter((c) => (stages.includes(c.stage) ? c.stage : stages[0]) === stageF) : noStage), [noStage, stageF, stages]);
   const funnel = useMemo(() => funnelCounts(noStage, stages), [noStage, stages]);
   const filterOn = !!(q || tag || assF || optF !== 'all' || srcF || acc || hotOnly || stageF);
+  const resetView = () => { reset(); setTab('kanban'); setResetN((n) => n + 1); void clearPersisted('crm.'); setMsg('Tampilan diatur ulang'); };
   const reset = () => { setQ(''); setTag(''); setAssF(''); setOptF('all'); setSrcF(''); setAcc(''); setHotOnly(false); setStageF(''); };
   const openChat = async (c: Contact) => setMsg((await openChatRoom({ accountId: c.accountId === MANUAL_ACCOUNT ? '' : c.accountId, chatId: c.chatId, phone: c.phone })).text);
 
@@ -62,6 +65,7 @@ export function App() {
       <div className="head">
         <h1>CRM - WhatsApp Web Toolkit by Irvandoda</h1>
         <span style={{ flex: 1 }} />
+        <button className="lnk" onClick={resetView} title="Kembalikan tab, filter, dan urutan ke pengaturan awal">Atur ulang tampilan</button>
         <button onClick={() => setAdding('one')}>Tambah satu kontak</button>
         <button className="pri big" onClick={() => setAdding('dialog')}>+ Tambah ke CRM</button>
       </div>
@@ -109,7 +113,7 @@ export function App() {
         </div>
       ) : <>
         {tab === 'kanban' && <Kanban contacts={filtered} stages={stages} intel={intel} byEng={byEng} onOpen={setDetail} onChat={(c) => void openChat(c)} />}
-        {tab === 'daftar' && <List contacts={filtered} stages={stages} intel={intel} assignees={assignees} onOpen={setDetail} onChat={(c) => void openChat(c)} onMsg={setMsg} onImport={() => setAdding('dialog')} />}
+        {tab === 'daftar' && <List contacts={filtered} stages={stages} intel={intel} assignees={assignees} onOpen={setDetail} onChat={(c) => void openChat(c)} onMsg={setMsg} onImport={() => setAdding('dialog')} resetSignal={resetN} />}
       </>}
       {tab === 'pengingat' && <Reminders reminders={reminders} contacts={contacts} />}
       {tab === 'pipeline' && <Pipeline stages={stages} />}
@@ -206,12 +210,14 @@ function Inline({ value, onCommit, label, type = 'text', w, list }: { value: str
 
 const patch = (c: Contact, p: Partial<Contact>) => send({ kind: 'crm:contact:upsert', contact: { accountId: c.accountId, chatId: c.chatId, ...p } });
 
-function List({ contacts, stages, intel, assignees, onOpen, onChat, onMsg, onImport }: {
+function List({ contacts, stages, intel, assignees, onOpen, onChat, onMsg, onImport, resetSignal = 0 }: {
   contacts: Contact[]; stages: string[]; intel: Map<string, LeadIntel>; assignees: string[];
-  onOpen: (c: Contact) => void; onChat: (c: Contact) => void; onMsg: (t: string) => void; onImport: () => void;
+  onOpen: (c: Contact) => void; onChat: (c: Contact) => void; onMsg: (t: string) => void; onImport: () => void; resetSignal?: number;
 }) {
-  const [sk, setSk] = useState<SortKey>('updatedAt');
-  const [asc, setAsc] = useState(false);
+  const [sk, setSk] = usePersistentState<SortKey>('crm.sort.key', 'updatedAt', (v): v is SortKey => typeof v === 'string' && ['name', 'phone', 'stage', 'value', 'updatedAt', 'eng', 'temp', 'prio', 'assignee'].includes(v));
+  const [asc, setAsc] = usePersistentState('crm.sort.asc', false);
+  const firstReset = useRef(resetSignal);
+  useEffect(() => { if (resetSignal !== firstReset.current) { setSk('updatedAt'); setAsc(false); } }, [resetSignal, setSk, setAsc]);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const anchor = useRef('');
   const [shown, setShown] = useState(PAGE);

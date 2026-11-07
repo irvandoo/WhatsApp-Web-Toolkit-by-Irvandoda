@@ -9,6 +9,7 @@ import { MANUAL_ACCOUNT, type BulkMode, type BulkResult, type Contact } from '..
 import type { ChatContact, ChatsContactsResult, GroupInfo, GroupMembersResult, GroupsListResult, LabelChatsResult, LabelInfo, LabelsListResult, RcpPingResult } from '../shared/messages';
 import { normalizePhone } from '../shared/recipients-logic';
 import { ScrollTable } from '../shared/ui/ScrollTable';
+import { usePersistentState } from '../shared/ui/persist';
 import { download, idr, isUn, rcp, reasonOf, send, tick, why } from './util';
 
 type Src = 'chat' | 'label' | 'manual' | 'csv' | 'grup';
@@ -20,7 +21,7 @@ export function AddDialog({ stages, contacts, assignees, tags: knownTags, onClos
   stages: string[]; contacts: Contact[]; assignees: string[]; tags: string[]; onClose: () => void; initialSrc?: Src;
 }) {
   const [step, setStep] = useState<1 | 2>(1);
-  const [src, setSrc] = useState<Src>(initialSrc ?? 'chat');
+  const [src, setSrc, rSrc] = usePersistentState<Src>('crm.draft.add.src', initialSrc ?? 'chat', (v): v is Src => TABS.some(([k]) => k === v));
   const [acct, setAcct] = useState<string>(MANUAL_ACCOUNT);
   const [busy, setBusy] = useState('');
   const [note, setNote] = useState('');
@@ -30,7 +31,7 @@ export function AddDialog({ stages, contacts, assignees, tags: knownTags, onClos
   const [chats, setChats] = useState<ChatContact[] | null>(null);
   const [chatSel, setChatSel] = useState<Set<string>>(new Set());
   const [q, setQ] = useState('');
-  const [incGroups, setIncGroups] = useState(false);
+  const [incGroups, setIncGroups] = usePersistentState('crm.draft.add.incGroups', false);
   const [shown, setShown] = useState(SHOW);
   // label
   const [labels, setLabels] = useState<LabelInfo[] | null>(null);
@@ -41,26 +42,28 @@ export function AddDialog({ stages, contacts, assignees, tags: knownTags, onClos
   const [groupSel, setGroupSel] = useState<Set<string>>(new Set());
   const [groupEntries, setGroupEntries] = useState<ImportEntry[]>([]);
   // manual / csv
-  const [manual, setManual] = useState('');
-  const [autoFormat, setAutoFormat] = useState(true);
+  const [manual, setManual] = usePersistentState('crm.draft.add.manual', '');
+  const [autoFormat, setAutoFormat] = usePersistentState('crm.draft.add.autoFormat', true);
   const [fixes, setFixes] = useState<Record<number, string>>({});
   const [csv, setCsv] = useState('');
   const [csvName, setCsvName] = useState('');
   const file = useRef<HTMLInputElement>(null);
   // step 2
-  const [stage, setStage] = useState(stages[0] ?? '');
-  const [tags, setTags] = useState<string[]>([]);
+  const [stage, setStage, rStage] = usePersistentState('crm.draft.add.stage', stages[0] ?? '');
+  const [tags, setTags] = usePersistentState<string[]>('crm.draft.add.tags', [], (v): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string'));
   const [tagIn, setTagIn] = useState('');
-  const [assignee, setAssignee] = useState('');
-  const [value, setValue] = useState('');
-  const [nt, setNt] = useState('');
-  const [mode, setMode] = useState<BulkMode>('skip');
-  const [skipOpt, setSkipOpt] = useState(true);
+  const [assignee, setAssignee] = usePersistentState('crm.draft.add.assignee', '');
+  const [value, setValue] = usePersistentState('crm.draft.add.value', '');
+  const [nt, setNt] = usePersistentState('crm.draft.add.note', '');
+  const [mode, setMode] = usePersistentState<BulkMode>('crm.draft.add.mode', 'skip', (v): v is BulkMode => v === 'skip' || v === 'update' || v === 'overwrite' as BulkMode);
+  const [skipOpt, setSkipOpt] = usePersistentState('crm.draft.add.skipOpt', true);
   const [pf, setPf] = useState<'all' | PlanAction>('all');
   const [pshown, setPshown] = useState(SHOW);
   const [prog, setProg] = useState<{ done: number; total: number } | null>(null);
   const [result, setResult] = useState<BulkResult | null>(null);
 
+  useEffect(() => { if (rSrc && initialSrc) setSrc(initialSrc); }, [rSrc]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (rStage && stages.length && !stages.includes(stage)) setStage(stages[0]); }, [rStage, stage, stages]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     ref.current?.focus();
     void rcp<RcpPingResult>({ kind: 'rcp:ping' }).then((r) => { if (r && !isUn(r) && r.accountId) setAcct(r.accountId); }).catch(() => {});
@@ -176,6 +179,7 @@ export function AddDialog({ stages, contacts, assignees, tags: knownTags, onClos
     await go(creates, 'skip');
     await go(updates, 'update');
     setResult(res); setProg(null);
+    if (res.created + res.updated > 0) { setManual(''); setTags([]); setAssignee(''); setValue(''); setNt(''); }
   };
 
   const rows = plan ? (pf === 'all' ? plan.rows : plan.rows.filter((r) => r.action === pf)) : [];

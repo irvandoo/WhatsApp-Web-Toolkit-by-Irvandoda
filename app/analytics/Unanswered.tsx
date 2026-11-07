@@ -1,5 +1,6 @@
 import { openChatRoom } from './openchat';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import { usePersistentState } from '../shared/ui/persist';
 import type { Interaction, LeadKind, UnansweredRow } from '../shared/analytics-types';
 import type { Contact, CrmMsg } from '../shared/crm-types';
 import { buildUnanswered, formatDuration } from '../shared/analytics-logic';
@@ -9,6 +10,7 @@ import { downloadCsv, fmtDateTime, KIND_LABEL, PRIO_LABEL, stamp } from './util'
 
 type Prio = UnansweredRow['priority'];
 type SortKey = 'name' | 'phone' | 'accountId' | 'kind' | 'waitingMs' | 'since' | 'priority' | 'stage' | 'temp' | 'eng' | 'momentum';
+const SORT_KEYS: SortKey[] = ['name', 'phone', 'accountId', 'kind', 'waitingMs', 'since', 'priority', 'stage', 'temp', 'eng', 'momentum'];
 const PRIOS: Prio[] = ['urgent', 'high', 'normal', 'low'];
 const PRANK: Record<Prio, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
 const H = 3600e3;
@@ -19,20 +21,28 @@ const MIN_PRESETS: [string, number][] = [['Semua', 0], ['> 1 jam', H], ['> 6 jam
 
 interface Props {
   interactions: Interaction[]; contacts: Contact[]; accountNames: Map<string, string>;
-  accountId: string; includeGroups: boolean; now: number; intel: Map<string, LeadIntel>; toast: (m: string) => void;
+  accountId: string; includeGroups: boolean; now: number; intel: Map<string, LeadIntel>; toast: (m: string) => void; resetSignal?: number;
 }
 
-export function Unanswered({ interactions, contacts, accountNames, accountId, includeGroups, now, intel, toast }: Props) {
-  const [prios, setPrios] = useState<Set<Prio>>(new Set());
-  const [kind, setKind] = useState<'' | LeadKind>('');
-  const [minMs, setMinMs] = useState(0);
-  const [stage, setStage] = useState('');
-  const [tag, setTag] = useState('');
-  const [q, setQ] = useState('');
-  const [temp, setTemp] = useState<'' | Temperature>('');
-  const [mom, setMom] = useState<'' | Momentum>('');
-  const [minEng, setMinEng] = useState(0);
-  const [sort, setSort] = useState<{ k: SortKey; dir: 1 | -1 }>({ k: 'waitingMs', dir: -1 });
+export function Unanswered({ interactions, contacts, accountNames, accountId, includeGroups, now, intel, toast, resetSignal = 0 }: Props) {
+  const [priosArr, setPriosArr] = usePersistentState<Prio[]>('unanswered.prios', []);
+  const prios = useMemo(() => new Set(priosArr.filter((p) => PRIOS.includes(p))), [priosArr]);
+  const [kind, setKind] = usePersistentState<'' | LeadKind>('unanswered.kind', '');
+  const [minMs, setMinMs] = usePersistentState('unanswered.minMs', 0);
+  const [stage, setStage] = usePersistentState('unanswered.stage', '');
+  const [tag, setTag] = usePersistentState('unanswered.tag', '');
+  const [q, setQ] = usePersistentState('unanswered.q', '');
+  const [temp, setTemp] = usePersistentState<'' | Temperature>('unanswered.temp', '');
+  const [mom, setMom] = usePersistentState<'' | Momentum>('unanswered.mom', '');
+  const [minEng, setMinEng] = usePersistentState('unanswered.minEng', 0);
+  const [sort, setSort] = usePersistentState<{ k: SortKey; dir: 1 | -1 }>('unanswered.sort', { k: 'waitingMs', dir: -1 },
+    (v): v is { k: SortKey; dir: 1 | -1 } => !!v && typeof v === 'object' && SORT_KEYS.includes((v as { k: SortKey }).k) && ((v as { dir: number }).dir === 1 || (v as { dir: number }).dir === -1));
+  const firstReset = useRef(resetSignal);
+  useEffect(() => {
+    if (resetSignal === firstReset.current) return;
+    setPriosArr([]); setKind(''); setMinMs(0); setStage(''); setTag(''); setQ(''); setTemp(''); setMom(''); setMinEng(0); setSort({ k: 'waitingMs', dir: -1 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetSignal]);
 
   const cmap = useMemo(() => new Map(contacts.map((c) => [c.key, c])), [contacts]);
   const rows = useMemo(() => buildUnanswered(interactions, now, { accountId: accountId || undefined, includeGroups }).map((r) => {
@@ -77,7 +87,7 @@ export function Unanswered({ interactions, contacts, accountNames, accountId, in
     });
   }, [rows, prios, kind, minMs, stage, tag, q, sort, accountNames, intel, temp, mom, minEng]);
 
-  const toggleP = (p: Prio) => setPrios((s) => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n; });
+  const toggleP = (p: Prio) => setPriosArr((s) => (s.includes(p) ? s.filter((x) => x !== p) : [...s, p]));
   const th = (k: SortKey, label: string, cls = '') => (
     <th scope="col" className={cls} aria-sort={sort.k === k ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}>
       <button onClick={() => setSort((s) => s.k === k ? { k, dir: (-s.dir) as 1 | -1 } : { k, dir: k === 'waitingMs' || k === 'since' || k === 'eng' ? -1 : 1 })}>
