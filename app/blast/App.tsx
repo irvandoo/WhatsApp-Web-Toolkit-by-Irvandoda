@@ -1,7 +1,9 @@
+import { DataTab } from './DataTab';
+import { flushDraftNow, loadDraft, saveDraftPart, type BlastDraft, type WizardDraft } from './draft';
 import { ActivityLog, NowLine, useActivity } from './ActivityLog';
 import { clearActivity } from '../content/outbox-activity';
 import { liveQuery } from 'dexie';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { IS_FULL } from '../shared/credit';
 import type { Contact, Reminder, Template } from '../shared/crm-types';
 import { db } from '../shared/db';
@@ -44,7 +46,8 @@ const toLocalInput = (t: number) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 
-type Tab = 'kampanye' | 'berjalan' | 'jadwal' | 'pengingat' | 'log';
+type Tab = 'kampanye' | 'berjalan' | 'jadwal' | 'pengingat' | 'log' | 'data';
+const TABS: Tab[] = ['kampanye', 'berjalan', 'jadwal', 'pengingat', 'log', 'data'];
 const STATUS_ID: Record<string, string> = {
   running: 'Berjalan', paused: 'Dijeda', done: 'Selesai', stopped: 'Dihentikan', pending: 'Menunggu', sending: 'Mengirim',
   sent: 'Terkirim', failed: 'Gagal', draft: 'Draf siap', skipped: 'Dilewati', cancelled: 'Dibatalkan',
@@ -53,7 +56,13 @@ const Badge = ({ s }: { s: string }) => <span className={`badge ${s}`}>{STATUS_I
 
 export function App() {
   const [tab, setTab] = useState<Tab>('kampanye');
+  const [loaded, setLoaded] = useState<{ tab: Tab; draft: BlastDraft | null } | null>(null);
+  const [restoredTab, setRestoredTab] = useState(false);
   const [killed, setKilled] = useState(false);
+
+  // Restore the last open tab once, then (re)load the saved draft each time a tab opens, so forms come back as they were left.
+  useEffect(() => { void loadDraft().then((d) => { if (d?.tab && (TABS as string[]).includes(d.tab)) setTab(d.tab as Tab); setRestoredTab(true); }); }, []);
+  useEffect(() => { if (!restoredTab) return; let live = true; void loadDraft().then((d) => { if (live) setLoaded({ tab, draft: d }); }); saveDraftPart({ tab }); return () => { live = false; }; }, [tab, restoredTab]);
   const campaigns = useLive(() => db.campaigns.orderBy('createdAt').reverse().toArray(), [] as Campaign[]);
 
   useEffect(() => {
@@ -70,7 +79,7 @@ export function App() {
   };
   const release = async () => { const r = await send<{ killed: boolean }>({ kind: 'ob:kill', on: false }); setKilled(!!r?.killed); };
 
-  const tabs: [Tab, string][] = [['kampanye', 'Kampanye'], ['berjalan', 'Berjalan'], ['jadwal', 'Jadwal'], ['pengingat', 'Pengingat → Kirim'], ['log', 'Log']];
+  const tabs: [Tab, string][] = [['kampanye', 'Kampanye'], ['berjalan', 'Berjalan'], ['jadwal', 'Jadwal'], ['pengingat', 'Pengingat → Kirim'], ['log', 'Log'], ['data', 'Data & Cadangan']];
   return (
     <div className="wrap">
       <header className="top">
@@ -91,9 +100,10 @@ export function App() {
         {tabs.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}
       </nav>
       <div className={`main${tab === 'kampanye' ? ' wizmain' : ''}`}>
-        {tab === 'kampanye' && <Wizard onStarted={() => setTab('berjalan')} />}
+        {loaded?.tab === tab && tab === 'kampanye' && <Wizard initial={loaded.draft?.wizard} onStarted={() => setTab('berjalan')} />}
         {tab === 'berjalan' && <Running campaigns={campaigns} />}
-        {tab === 'jadwal' && <Schedules />}
+        {loaded?.tab === tab && tab === 'jadwal' && <Schedules initial={loaded.draft?.schedule} />}
+        {tab === 'data' && <DataTab />}
         {tab === 'pengingat' && <Reminders />}
         {tab === 'log' && <LogTab campaigns={campaigns} />}
       </div>
@@ -192,16 +202,18 @@ function SafetyForm({ s, set }: { s: SafetySettings; set: (v: SafetySettings) =>
   );
 }
 
-function Wizard({ onStarted }: { onStarted: () => void }) {
-  const [step, setStep] = useState(1);
-  const [name, setName] = useState('');
-  const [picked, setPicked] = useState<PickerResult>({ recipients: [], source: 'csv', unique: 0 });
+function Wizard({ onStarted, initial }: { onStarted: () => void; initial?: WizardDraft }) {
+  const [step, setStep] = useState(initial?.step ?? 1);
+  const [name, setName] = useState(initial?.name ?? '');
+  const [picked, setPicked] = useState<PickerResult>(initial?.recipients.length ? { recipients: initial.recipients, source: initial.source, unique: initial.recipients.length } : { recipients: [], source: 'csv', unique: 0 });
+  const restoredRef = useRef(!!initial?.recipients.length);
+  const [restored, setRestored] = useState(restoredRef.current);
   const [pickKey, setPickKey] = useState(0);
-  const [body, setBody] = useState('');
-  const [safety, setSafety] = useState<SafetySettings>(DEFAULT_SAFETY);
-  const [optIn, setOptIn] = useState(false);
-  const [later, setLater] = useState(false);
-  const [startLocal, setStartLocal] = useState(toLocalInput(Date.now() + 3_600_000));
+  const [body, setBody] = useState(initial?.body ?? '');
+  const [safety, setSafety] = useState<SafetySettings>(initial?.safety ?? DEFAULT_SAFETY);
+  const [optIn, setOptIn] = useState(initial?.optIn ?? false);
+  const [later, setLater] = useState(initial?.later ?? false);
+  const [startLocal, setStartLocal] = useState(initial?.startLocal || toLocalInput(Date.now() + 3_600_000));
   const [seed, setSeed] = useState(0);
   const [busy, setBusy] = useState(false);
   const [errs, setErrs] = useState<string[]>([]);
@@ -210,6 +222,16 @@ function Wizard({ onStarted }: { onStarted: () => void }) {
   const templates = useLive(() => db.templates.toArray(), [] as Template[]);
   const recent = useLive(() => db.sendLog.where('ts').aboveOrEqual(Date.now() - 2 * 86_400_000).toArray(), [] as SendLogEntry[]);
   const earliest = useLive(async () => (await db.sendLog.orderBy('ts').filter((e) => e.status === 'sent' && e.mode === 'auto').first())?.ts ?? null, null as number | null);
+
+  // Auto-save everything typed so far (survives a refresh, closing the overlay, or switching tabs).
+  useEffect(() => { saveDraftPart({ wizard: { step, name, body, safety, optIn, later, startLocal, recipients: picked.recipients, source: picked.source } }); }, [step, name, body, safety, optIn, later, startLocal, picked]);
+  useEffect(() => () => { void flushDraftNow(); }, []);
+  const onPick = useCallback((r: PickerResult) => {
+    if (restoredRef.current && r.recipients.length === 0) return; // the picker starts empty: keep the saved recipients until the user chooses new ones
+    if (r.recipients.length > 0) { restoredRef.current = false; setRestored(false); }
+    setPicked(r);
+  }, []);
+  const dropRestored = () => { restoredRef.current = false; setRestored(false); setPicked({ recipients: [], source: 'csv', unique: 0 }); setPickKey((k) => k + 1); };
 
   const optOut = useMemo(() => optOutPhoneSet(contacts), [contacts]);
   const recipients: Recipient[] = picked.recipients;
@@ -260,7 +282,8 @@ function Wizard({ onStarted }: { onStarted: () => void }) {
         <div className="card">
           <h2>Penerima</h2>
           <p className="mut">Pilih sumber nomor: Manual, Label, Grup, CRM, atau CSV. Nomor otomatis diformat (misal <code>+62 857-4747-6308</code> menjadi <code>6285747476308</code>) dan duplikat dihapus otomatis.</p>
-          <RecipientPicker key={pickKey} onChange={setPicked} />
+          {restored && <div className="banner" role="status">Draf dipulihkan: <b>{picked.recipients.length}</b> penerima tersimpan dari sesi sebelumnya. Pilih sumber di bawah untuk menggantinya. <button onClick={dropRestored}>Buang penerima tersimpan</button></div>}
+          <RecipientPicker key={pickKey} onChange={onPick} />
           <p><b>Total penerima unik: {recipients.length}</b></p>
         </div>
       </div>
@@ -408,11 +431,13 @@ function describeRec(r: Recurrence): string {
   return `Mingguan ${r.weekdays.map((d) => DAYS[d]).join(', ')} ${r.time}`;
 }
 
-function Schedules() {
+function Schedules({ initial }: { initial?: Schedule }) {
   const list = useLive(() => db.schedules.toArray(), [] as Schedule[]);
   const contacts = useLive(() => db.contacts.toArray(), [] as Contact[]);
-  const [f, setF] = useState<Schedule>(blankSchedule);
+  const [f, setF] = useState<Schedule>(initial ?? blankSchedule());
   const [errs, setErrs] = useState<string[]>([]);
+  useEffect(() => { saveDraftPart({ schedule: f }); }, [f]);
+  useEffect(() => () => { void flushDraftNow(); }, []);
   const rec = f.recurrence;
   const setRec = (r: Recurrence) => setF({ ...f, recurrence: r });
   const pickContact = (key: string) => {

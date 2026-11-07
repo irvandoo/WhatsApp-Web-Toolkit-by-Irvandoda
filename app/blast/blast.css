@@ -67,3 +67,6 @@ pre.mini{margin:0;white-space:pre-wrap;font:12px ui-monospace,Consolas,monospace
 .actlist .mk{text-align:center;font-weight:700}
 .actlist .lv-ok .mk{color:var(--wt-ok,#24714a)}.actlist .lv-err .mk,.actlist .lv-err .tx{color:var(--wt-bad,#a3403d)}
 .actlist .lv-warn .mk,.actlist .lv-warn .tx{color:var(--wt-warn,#845508)}.actlist .lv-work .mk{color:var(--wt-info,#2f6590)}
+
+/* Data & Cadangan */
+.datalist{margin:6px 0 0;padding-left:18px;line-height:1.7}
