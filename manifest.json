@@ -46,7 +46,7 @@
         "assets/crm-logic-9iW_lkun.js",
         "assets/template-engine-B5HOWEY9.js",
         "assets/crm-types-BrsAoK90.js",
-        "assets/index.ts-Dt7wRvjh.js",
+        "assets/index.ts-DGLS1fQM.js",
         "assets/wa-adapter.ts-BiL8g5la.js"
       ],
       "use_dynamic_url": false
@@ -55,7 +55,7 @@
   "content_scripts": [
     {
       "js": [
-        "assets/index.ts-loader-1oVKTJd7.js"
+        "assets/index.ts-loader-D2vP4iDP.js"
       ],
       "matches": [
         "https://web.whatsapp.com/*"

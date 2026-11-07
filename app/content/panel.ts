@@ -6,6 +6,7 @@ import type { Account, RuntimeMsg, SessionMeta } from '../shared/messages';
 import { listChats, ping, syncAll, syncChat, type SyncProgress } from './sync';
 import { icon } from './panel-icons';
 import { PANEL_CSS } from './panel-style';
+import { mountNavButton } from './nav-button';
 import { mountOverlayListener, openOverlay, type OverlayPage } from './overlay';
 
 type Props = Record<string, string>;
@@ -296,6 +297,13 @@ export function mountPanel(): void {
   mq?.addEventListener?.('change', applyTheme);
   if (document.body) new MutationObserver(applyTheme).observe(document.body, { attributes: true, attributeFilter: ['class'] });
 
+  // ---- navbar entry (preferred) — the floating button is only a fallback
+  const navBtn = mountNavButton({
+    label: CREDIT.product,
+    onClick: () => { if (isOpen) close(); else open(); },
+    onPresence: (present) => wrap.classList.toggle('nav', present),
+  });
+
   // ---- open / close
   let timer: number | undefined;
   let isOpen = false;
@@ -305,6 +313,7 @@ export function mountPanel(): void {
     applyTheme();
     panel.classList.add('show');
     fab.setAttribute('aria-expanded', 'true');
+    navBtn.setPressed(true);
     if (reduce()) panel.classList.add('in'); else requestAnimationFrame(() => panel.classList.add('in'));
     select(tab);
     timer = window.setInterval(() => { if (!alive()) return close(); void refresh(); }, 3000);
@@ -316,18 +325,19 @@ export function mountPanel(): void {
     timer = undefined;
     panel.classList.remove('in');
     fab.setAttribute('aria-expanded', 'false');
+    navBtn.setPressed(false);
     const hide = () => { if (!isOpen) panel.classList.remove('show'); };
     if (reduce()) hide(); else setTimeout(hide, 170);
-    if (refocus) fab.focus();
+    if (refocus) { if (navBtn.present()) navBtn.focus(); else fab.focus(); }
   }
   closeBtn.addEventListener('click', () => close(true));
   document.addEventListener('keydown', (e) => { if (isOpen && e.key === 'Escape') close(true); }, true);
-  document.addEventListener('mousedown', (e) => { if (isOpen && !e.composedPath().includes(host)) close(); }, true);
+  document.addEventListener('mousedown', (e) => { if (isOpen && !e.composedPath().includes(host) && !(e.target as Element | null)?.closest?.('[data-wwt-nav]')) close(); }, true);
 
   // ---- FAB drag (vertical) + position persistence
   const SIZE = 48, MARGIN = 16;
   const clampY = (y: number) => Math.max(MARGIN, Math.min(window.innerHeight - SIZE - MARGIN, y));
-  let fabY = window.innerHeight - SIZE - MARGIN;
+  let fabY = Math.round(window.innerHeight * 0.4); // mid-right: never over the composer's send/voice button
   try { const v = parseFloat(localStorage.getItem(POS_KEY) ?? ''); if (Number.isFinite(v)) fabY = v; } catch { /* storage blocked */ }
   const place = () => { fabY = clampY(fabY); fab.style.top = `${fabY}px`; };
   place();

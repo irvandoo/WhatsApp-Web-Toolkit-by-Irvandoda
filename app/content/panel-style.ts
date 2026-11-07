@@ -20,6 +20,8 @@ font-size:11px;font-weight:700;line-height:14px;text-align:center;font-variant-n
 background:var(--bg);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);overflow:hidden;opacity:0;transform:translateY(8px) scale(.98);
 transition:opacity .16s ease,transform .16s ease}
 .panel.show{display:flex}
+.nav .fab{display:none}
+.nav .panel{right:auto;left:76px;bottom:16px}
 .panel.in{opacity:1;transform:none}
 @media (max-width:480px){.panel{right:8px;bottom:72px}}
 @media (prefers-reduced-motion:reduce){.panel{transition:none;transform:none}.fab.run::after{animation:none;opacity:.6}.bar i{transition:none}.bar i.ind{animation:none}}
