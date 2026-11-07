@@ -111,27 +111,34 @@ POS (katalog, invoice), blast terjadwal dengan jeda aman, ekstrak anggota grup (
 
 ---
 
-## Instalasi untuk pengembangan
+## Instalasi
 
-Prasyarat: Node.js ≥ 20, Google Chrome.
+### Plug & play (tanpa build)
+Folder root repositori ini **sudah berisi build `store` yang siap dimuat** (`manifest.json`, `assets/`, `popup/`, dll.).
+
+1. Unduh/clone repositori ini.
+2. Buka `chrome://extensions` dan aktifkan **Developer mode**.
+3. Klik **Load unpacked**, lalu pilih **folder root repositori** (yang berisi `manifest.json`).
+4. Buka https://web.whatsapp.com/, login, lalu klik tombol hijau **W** di pojok kanan bawah.
 
 ```bash
 git clone https://github.com/irvandoo/WhatsApp-Web-Toolkit-by-Irvandoda.git
-cd WhatsApp-Web-Toolkit-by-Irvandoda
-npm install
+```
 
-npm run build:store    # -> dist/store
-npm run build:full     # -> dist/full
+Jika panel menampilkan *"Store TIDAK terdeteksi"*, nama modul internal WA sudah berubah — buka issue beserta versi WA Web Anda.
+
+### Untuk pengembangan
+Prasyarat: Node.js ≥ 20. Kode sumber ada di folder `app/`.
+
+```bash
+npm install
+npm run build:store    # menulis ulang file ekstensi di root repo
+npm run build:full     # -> dist/full (sideload, fitur lanjutan)
 npm run typecheck
 npm test
 ```
 
-Memuat ke Chrome:
-1. Buka `chrome://extensions`, aktifkan **Developer mode**.
-2. Klik **Load unpacked**, pilih folder `dist/store` (atau `dist/full`).
-3. Buka https://web.whatsapp.com/, login, lalu klik tombol hijau **W** di pojok kanan bawah.
-
-Jika panel menampilkan *"Store TIDAK terdeteksi"*, nama modul internal WA sudah berubah — buka issue beserta versi WA Web Anda.
+> `build:store` menghapus dan membuat ulang file hasil build di root (`assets/`, `popup/`, `manifest.json`, dst.). Jangan menaruh file sendiri di folder-folder tersebut. Setelah build, muat ulang ekstensi di `chrome://extensions`.
 
 ---
 
@@ -145,24 +152,22 @@ Jika panel menampilkan *"Store TIDAK terdeteksi"*, nama modul internal WA sudah 
 | Ekstrak anggota grup | ❌ | 🔜 |
 | Target | Chrome Web Store | Sideload |
 
-Flavor dipilih lewat konstanta `__FLAVOR__` saat build (`vite build --mode store|full`).
+Flavor dipilih lewat konstanta `__FLAVOR__` saat build (`vite build --mode store|full`). Build `store` ditulis ke root repo, `full` ke `dist/full`.
 
 ---
 
 ## Struktur proyek
 
 ```
-manifest.config.ts, vite.config.ts, package.json, tsconfig.json
-_locales/{id,en}/messages.json
-src/
-  background/     service worker: akun, sesi, CRM, template, alarm
-  content/        panel, memori, sync, bridge, CRM bar, composer
-  injected/       wa-adapter.ts (MAIN world)
-  dashboard/      Hub multi-akun
-  crm/            Kanban, daftar, pengingat
-  templates/      pengelola template
-  popup/ options/
-  shared/         tipe, db (Dexie), codec, template engine, kredit
+app/                      kode sumber (root Vite)
+  background/             service worker: akun, sesi, CRM, template, alarm
+  content/                panel, memori, sync, bridge, CRM bar, composer
+  injected/               wa-adapter.ts (MAIN world)
+  dashboard/ crm/ templates/ popup/ options/   halaman UI (React)
+  shared/                 tipe, db (Dexie), codec, template engine, kredit
+  public/                 ikon dan _locales
+manifest.config.ts, vite.config.ts, scripts/clean-root.mjs
+manifest.json, assets/, popup/, dashboard/, ...   hasil build `store` (siap dimuat)
 ```
 
 ---

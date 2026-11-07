@@ -6,7 +6,7 @@
   "author": "Irvando Demas Arifiandani <irvando.d.a@gmail.com> (https://irvandoda.web.id)",
   "scripts": {
     "dev": "vite",
-    "build:store": "tsc --noEmit && vite build --mode store",
+    "build:store": "node scripts/clean-root.mjs && tsc --noEmit && vite build --mode store",
     "build:full": "tsc --noEmit && vite build --mode full",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

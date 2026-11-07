@@ -10,7 +10,7 @@
     "skipLibCheck": true,
     "types": ["chrome", "vite/client", "node"],
     "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] }
+    "paths": { "@/*": ["app/*"] }
   },
-  "include": ["src", "manifest.config.ts", "vite.config.ts"]
+  "include": ["app", "manifest.config.ts", "vite.config.ts"]
 }

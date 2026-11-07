@@ -1,0 +1,71 @@
+{
+  "manifest_version": 3,
+  "name": "__MSG_extName__",
+  "description": "__MSG_extDesc__",
+  "version": "0.1.0",
+  "default_locale": "id",
+  "author": {
+    "email": "irvando.d.a@gmail.com"
+  },
+  "homepage_url": "https://irvandoda.web.id",
+  "icons": {
+    "16": "public/icons/icon16.png",
+    "48": "public/icons/icon48.png",
+    "128": "public/icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup/index.html"
+  },
+  "options_page": "options/index.html",
+  "background": {
+    "service_worker": "service-worker-loader.js",
+    "type": "module"
+  },
+  "permissions": [
+    "storage",
+    "alarms",
+    "scripting",
+    "unlimitedStorage",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://web.whatsapp.com/*"
+  ],
+  "content_scripts": [
+    {
+      "js": [
+        "assets/index.ts-loader-Bhi9Y2Xv.js"
+      ],
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "js": [
+        "assets/wa-adapter.ts-loader-BUDJjdSS.js"
+      ],
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "resources": [
+        "assets/credit-Clr3KknC.js",
+        "assets/messages-01GVDVMN.js",
+        "assets/session-codec-BbjBUFD2.js",
+        "assets/template-engine-B5HOWEY9.js",
+        "assets/index.ts-BpQmTsiR.js",
+        "assets/wa-adapter.ts-MCm-B1FH.js"
+      ],
+      "use_dynamic_url": false
+    }
+  ]
+}
