@@ -1,3 +1,5 @@
+import { ActivityLog, NowLine, useActivity } from './ActivityLog';
+import { clearActivity } from '../content/outbox-activity';
 import { liveQuery } from 'dexie';
 import { useEffect, useMemo, useState } from 'react';
 import { IS_FULL } from '../shared/credit';
@@ -326,6 +328,7 @@ function Wizard({ onStarted }: { onStarted: () => void }) {
 // ---------------- Berjalan ----------------
 function Running({ campaigns }: { campaigns: Campaign[] }) {
   const items = useLive(() => db.outbox.toArray(), [] as OutboxItem[]);
+  const activity = useActivity();
   const [open, setOpen] = useState('');
   const [limits, setLimits] = useState<Record<string, number>>({});
   const shown = (id: string) => limits[id] ?? PAGE;
@@ -364,6 +367,8 @@ function Running({ campaigns }: { campaigns: Campaign[] }) {
               {next && c.status === 'running' && <span>Berikutnya: {fmt(next.dueAt)}</span>}
             </div>
             {c.pausedReason && c.status === 'paused' && <p className="err" role="status">{c.pausedReason}</p>}
+            <NowLine all={activity} campaignId={c.id} running={c.status === 'running'} />
+            {(c.status === 'running' || open === c.id) && <ActivityLog all={activity} campaignId={c.id} onClear={() => void clearActivity()} />}
             {open === c.id && (
               <div style={{ marginTop: 8 }}>
                 <ScrollTable maxHeight="max(260px, 62vh)" stickyFirst label="Status per penerima">

@@ -55,3 +55,15 @@ th,td{border-bottom:1px solid color-mix(in srgb,var(--bd) 70%,transparent);paddi
 pre.mini{margin:0;white-space:pre-wrap;font:12px ui-monospace,Consolas,monospace}
 .days{display:flex;gap:6px;flex-wrap:wrap}
 .days label{display:flex;gap:3px;align-items:center}
+
+/* live activity feed */
+.now{margin:6px 0;padding:6px 10px;border-radius:var(--rs,10px);background:var(--soft,#e6f4ec);color:var(--fg)}
+.now.err{background:var(--wt-bad-soft,#fbe9e7)}.now.warn{background:var(--wt-warn-soft,#fbf0dc)}
+.actlog{margin-top:8px}
+.actlist{list-style:none;margin:0;padding:0;max-height:max(180px,32vh);overflow:auto;border:1px solid var(--bd);border-radius:var(--rs,10px);background:var(--card)}
+.actlist li{display:grid;grid-template-columns:64px 18px 1fr;gap:8px;padding:4px 10px;border-bottom:1px solid color-mix(in srgb,var(--bd) 60%,transparent);font-size:13px;line-height:1.4}
+.actlist li:last-child{border-bottom:0}
+.actlist time{color:var(--mut);font-variant-numeric:tabular-nums}
+.actlist .mk{text-align:center;font-weight:700}
+.actlist .lv-ok .mk{color:var(--wt-ok,#24714a)}.actlist .lv-err .mk,.actlist .lv-err .tx{color:var(--wt-bad,#a3403d)}
+.actlist .lv-warn .mk,.actlist .lv-warn .tx{color:var(--wt-warn,#845508)}.actlist .lv-work .mk{color:var(--wt-info,#2f6590)}

@@ -6,6 +6,8 @@ import { call } from './bridge';
 import { sendSilent } from './send-settings';
 import { isEngineOn, reportHealth } from './engine-health';
 import { insertErrorText, insertIntoComposer, showToast } from './composer-insert';
+import { logActivity } from './outbox-activity';
+import { shouldLogWait, snippet, whoLabel } from '../shared/outbox-activity';
 
 export interface OutboxState {
   mounted: boolean;
@@ -27,6 +29,8 @@ const state: OutboxState = { mounted: false, inFlight: false, killed: false, las
 export const getOutboxState = (): OutboxState => ({ ...state });
 
 let timer: ReturnType<typeof setInterval> | undefined;
+let lastWait = '';
+let wasKilled = false;
 let acc: { id: string | null; at: number } = { id: null, at: 0 };
 
 const alive = (): boolean => { try { return !!chrome.runtime?.id; } catch { return false; } };
@@ -58,23 +62,46 @@ const ERR: Record<string, string> = {
 
 async function sendAuto(item: OutboxItem, checkRegistered: boolean): Promise<void> {
   let chatId = item.chatId ?? `${item.phone}@c.us`;
-  if (isBlockedTarget(chatId) || isBlockedTarget(item.phone)) return report(item.id, 'failed', { error: ERR['send-rejected'], permanent: true });
-  if (await killed()) { await report(item.id, 'failed', { error: 'Stop global', permanent: true }); return; }
+  const who = whoLabel(item.name, item.phone);
+  const ids = { campaignId: item.campaignId, itemId: item.id, phone: item.phone };
+  logActivity('work', 'antre', `Mengambil antrean: ${who}`, ids);
+  if (isBlockedTarget(chatId) || isBlockedTarget(item.phone)) {
+    logActivity('err', 'gagal', `Dilewati ${who}: tujuan tidak diizinkan (grup/broadcast/status atau kosong)`, ids);
+    return report(item.id, 'failed', { error: ERR['send-rejected'], permanent: true });
+  }
+  if (await killed()) {
+    logActivity('warn', 'stop', 'Dihentikan oleh Stop global, pesan tidak dikirim', ids);
+    await report(item.id, 'failed', { error: 'Stop global', permanent: true });
+    return;
+  }
   if (checkRegistered) {
+    logActivity('work', 'cek', `Memeriksa apakah +${item.phone} terdaftar di WhatsApp…`, ids);
     try {
       const res = await call<RegisteredResult[]>({ type: 'check:registered', phones: [item.phone] }, 20_000);
       const r = res?.[0];
-      if (r?.registered === false) { state.failed++; return report(item.id, 'failed', { error: 'Nomor tidak terdaftar di WhatsApp', permanent: true }); }
+      if (r?.registered === false) {
+        state.failed++;
+        logActivity('err', 'gagal', `+${item.phone} tidak terdaftar di WhatsApp, dilewati`, ids);
+        return report(item.id, 'failed', { error: 'Nomor tidak terdaftar di WhatsApp', permanent: true });
+      }
+      if (r?.registered === true) logActivity('ok', 'cek', `+${item.phone} terdaftar di WhatsApp`, ids);
+      else logActivity('warn', 'cek', `Status terdaftar +${item.phone} tidak bisa dipastikan, lanjut mengirim`, ids);
       if (r?.chatId && !isBlockedTarget(r.chatId)) chatId = r.chatId;
-    } catch { /* unknown -> try sending anyway */ }
+    } catch { logActivity('warn', 'cek', `Pengecekan nomor gagal, lanjut mengirim ke +${item.phone}`, ids); }
   }
+  logActivity('info', 'pesan', `Pesan siap (${item.text.length} karakter): "${snippet(item.text)}"`, ids);
+  logActivity('work', 'chat', `Mencari chat ${who} lewat internal WhatsApp (tanpa membuka layar)…`, ids);
   try {
-    await sendSilent(chatId, item.text, { timeoutMs: 45_000 });
+    logActivity('work', 'kirim', `Mengirim pesan ke ${who}…`, ids);
+    const r = await sendSilent(chatId, item.text, { timeoutMs: 45_000 });
+    if (r && r.ok === false) throw new Error(r.error || 'send-failed');
     state.sent++;
+    logActivity('ok', 'ok', `Terkirim ke ${who}${r?.method ? ` (jalur ${r.method}, ${r.verified ? 'terverifikasi muncul di chat' : 'belum terverifikasi'})` : ''}`, ids);
     await report(item.id, 'sent', { chatId });
   } catch (e) {
     const key = e instanceof Error ? e.message : String(e);
     state.failed++;
+    logActivity('err', 'gagal', `Gagal mengirim ke ${who}: ${ERR[key] ?? key}`, ids);
     await report(item.id, 'failed', { error: ERR[key] ?? key, permanent: key === 'send-rejected', chatId });
   }
 }
@@ -109,6 +136,7 @@ function ensureToastHost(): HTMLElement {
 }
 
 function showDraft(item: OutboxItem): void {
+  logActivity('info', 'draf', `Draf untuk ${whoLabel(item.name, item.phone)} siap, menunggu Anda mengirim`, { campaignId: item.campaignId, itemId: item.id, phone: item.phone });
   const b = ensureToastHost();
   const card = document.createElement('div');
   card.className = 'card';
@@ -154,14 +182,23 @@ async function tick(): Promise<void> {
   state.inFlight = true;
   try {
     state.killed = await killed();
-    if (state.killed) { state.lastReason = 'Dihentikan (Stop global)'; health('mati', state.lastReason); return; }
+    if (state.killed) {
+      state.lastReason = 'Dihentikan (Stop global)'; health('mati', state.lastReason);
+      if (!wasKilled) logActivity('warn', 'stop', 'Dihentikan oleh Stop global: tidak ada pesan yang dikirim');
+      wasKilled = true;
+      return;
+    }
+    wasKilled = false;
     const r = (await chrome.runtime.sendMessage({ kind: 'ob:next', accountId: await accountId() })) as NextItem | undefined;
     if (!r || !r.item) {
       state.lastReason = r?.reason ?? '';
+      if (shouldLogWait(lastWait, state.lastReason)) logActivity('info', 'tunggu', `Menunggu: ${state.lastReason}`);
+      lastWait = state.lastReason;
       health('jalan', state.drafts > 0 ? `${state.drafts} draf menunggu Anda` : state.lastReason || (state.sent ? `Terkirim ${state.sent}, gagal ${state.failed}` : 'Tidak ada antrean kirim'));
       return;
     }
     state.lastReason = '';
+    lastWait = '';
     if (r.mode === 'auto') {
       const total = r.campaign?.total;
       health('kerja', `Mengirim ke ${r.item.name || '+' + r.item.phone}`, total);
