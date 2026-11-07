@@ -226,7 +226,7 @@ export function openSwitcher(anchor: HTMLElement): void {
           const b = btn(c === s.color ? 'sel' : '', '', () => void act({ kind: 'slot:update', id: s.id, patch: { color: c } }), `Warna ${c}`);
           b.style.background = c; sw.append(b);
         }
-        menu.append(sw, btn('', 'Buka di tab baru', () => { void send({ kind: 'slot:open-tab', id: s.id }); close(); }));
+        menu.append(sw, btn('', 'Buka di tab baru', () => { void send({ kind: 'slot:open-tab', id: s.id, forceNew: true }); close(); }));
         if (s.id !== DEFAULT_SID && s.id !== active) {
           menu.append(btn('danger', 'Hapus (data login ikut dihapus)', () => { void purgeSlotData(s.id); void act({ kind: 'slot:delete', id: s.id }); }));
         }

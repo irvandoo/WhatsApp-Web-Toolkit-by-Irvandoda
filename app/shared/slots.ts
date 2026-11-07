@@ -39,7 +39,7 @@ export type SlotMsg =
   | { kind: 'slot:delete'; id: string }
   | { kind: 'slot:touch'; id: string }
   | { kind: 'slot:bind'; id: string; accountId: string }
-  | { kind: 'slot:open-tab'; id: string }
+  | { kind: 'slot:open-tab'; id: string; forceNew?: boolean }
   | { kind: 'slot:status'; id: string; state: SlotState; ts: number; accountId?: string | null; unread?: number }
   | { kind: 'slot:focus'; id: string }
   | { kind: 'slot:switch-here'; id: string }

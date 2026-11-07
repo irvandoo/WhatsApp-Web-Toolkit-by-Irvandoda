@@ -67,6 +67,31 @@ async function focusTab(t: chrome.tabs.Tab): Promise<void> {
   if (t.windowId !== undefined) await chrome.windows.update(t.windowId, { focused: true }).catch(() => undefined);
 }
 
+
+/**
+ * Show account `sid` WITHOUT opening a new tab: (1) a tab that already holds it is focused,
+ * (2) otherwise an already open WhatsApp tab is switched to it (that tab reloads into the slot),
+ * (3) only when no WhatsApp tab exists at all a new one is created. The tab to reuse is the caller's own tab
+ * (Hub overlay) or the most recently used one.
+ */
+async function showSlot(sid: string, hint?: number, callerTab?: chrome.tabs.Tab): Promise<{ ok: true; opened: boolean; switched: boolean }> {
+  const holder = await findTab(sid, hint);
+  if (holder) { await focusTab(holder); return { ok: true, opened: false, switched: false }; }
+  const caller = callerTab && /^https:\/\/web\.whatsapp\.com\//.test(callerTab.url ?? '') ? callerTab : null;
+  const tabs = await waTabs();
+  tabs.sort((a, b) => Number(!!b.active) - Number(!!a.active) || ((b as { lastAccessed?: number }).lastAccessed ?? 0) - ((a as { lastAccessed?: number }).lastAccessed ?? 0));
+  const target = caller ?? tabs[0];
+  if (!target) { await chrome.tabs.create({ url: `https://web.whatsapp.com/#wwt-sid=${sid}` }); return { ok: true, opened: true, switched: false }; }
+  const r = await sendTab(target.id!, { kind: 'slotx:switch', id: sid });
+  if (!r?.ok) {
+    // that tab does not answer (old tab from before an extension reload, not refreshed yet): do not strand the user
+    await chrome.tabs.create({ url: `https://web.whatsapp.com/#wwt-sid=${sid}` });
+    return { ok: true, opened: true, switched: false };
+  }
+  await focusTab(target);
+  return { ok: true, opened: false, switched: true };
+}
+
 export async function handleSlots(m: SlotMsg, sender?: chrome.runtime.MessageSender): Promise<unknown> {
   await ensureDefault();
   switch (m.kind) {
@@ -138,16 +163,13 @@ export async function handleSlots(m: SlotMsg, sender?: chrome.runtime.MessageSen
     }
     case 'slot:open-tab': {
       if (!isValidSid(m.id)) throw new Error('bad id');
-      await chrome.tabs.create({ url: `https://web.whatsapp.com/#wwt-sid=${m.id}` });
-      return { ok: true };
+      if (m.forceNew) { await chrome.tabs.create({ url: `https://web.whatsapp.com/#wwt-sid=${m.id}` }); return { ok: true, opened: true }; }
+      return showSlot(m.id, undefined, sender?.tab);
     }
     case 'slot:focus': {
       if (!isValidSid(m.id)) throw new Error('bad id');
       const cur = await db.slots.get(m.id);
-      const t = await findTab(m.id, cur?.statusTabId);
-      if (t) { await focusTab(t); return { ok: true, opened: false }; }
-      await chrome.tabs.create({ url: `https://web.whatsapp.com/#wwt-sid=${m.id}` });
-      return { ok: true, opened: true };
+      return showSlot(m.id, cur?.statusTabId, sender?.tab);
     }
     case 'slot:switch-here': {
       // ask a WA tab (not holding another live copy of this slot) to switch itself to the slot

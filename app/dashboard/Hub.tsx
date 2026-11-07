@@ -129,8 +129,8 @@ function AddDialog({ groups, onClose, toast }: { groups: AccountGroup[]; onClose
         toast('Akun dibuat. Tab ini dimuat ulang, lalu scan QR yang tampil.');
         await slotSend({ kind: 'slot:switch-here', id: s.id });
       } else {
-        await slotSend({ kind: 'slot:open-tab', id: s.id });
-        toast('Akun dibuat. Tab WhatsApp baru dibuka, scan QR di sana.');
+        const r = await slotSend<{ opened?: boolean }>({ kind: 'slot:open-tab', id: s.id });
+        toast(r?.opened ? 'Akun dibuat. Tab WhatsApp baru dibuka, scan QR di sana.' : 'Akun dibuat. Tab WhatsApp yang sudah terbuka dialihkan ke akun ini, scan QR di sana.');
       }
       onClose();
     } catch (e) { toast(`Gagal menambah akun: ${errText(e)}`, true); } finally { setBusy(false); }
@@ -304,8 +304,8 @@ function Drawer({ slot, groups, now, onClose, toast, onDelete }: { slot: Slot; g
 
 async function openSlot(s: Slot, toast: (t: string, bad?: boolean) => void) {
   try {
-    const r = await slotSend<{ opened?: boolean }>({ kind: 'slot:focus', id: s.id });
-    toast(r?.opened ? 'Tab baru dibuka untuk akun ini.' : 'Tab akun difokuskan.');
+    const r = await slotSend<{ opened?: boolean; switched?: boolean }>({ kind: 'slot:focus', id: s.id });
+    toast(r?.opened ? 'Tab baru dibuka (belum ada tab WhatsApp yang terbuka).' : r?.switched ? 'Tab WhatsApp yang sudah terbuka dialihkan ke akun ini.' : 'Tab akun difokuskan.');
   } catch (e) { toast(`Gagal membuka: ${errText(e)}`, true); }
 }
 
