@@ -1,3 +1,4 @@
+import { ScrollTable } from '../shared/ui/ScrollTable';
 import { liveQuery } from 'dexie';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { IS_FULL } from '../shared/credit';
@@ -63,7 +64,7 @@ export function App() {
   const active = g.enabled && rules.some((r) => r.enabled);
 
   return (
-    <div className="wrap">
+    <div className="page">
       <div className="top">
         <h1>Auto-Reply</h1>
         <div className="switches">
@@ -96,9 +97,11 @@ export function App() {
         ))}
       </nav>
 
+      <div className={'pane' + (tab === 'log' ? ' fill' : '')}>
       {tab === 'aturan' && <Rules rules={rules} ready={seeded} onEdit={setEditing} onNew={() => setEditing(newRule(rules.length))} />}
       {tab === 'log' && <Log />}
       {tab === 'keamanan' && <Safety />}
+      </div>
       {editing && <Editor key={editing.id} initial={editing} onClose={() => setEditing(null)} />}
     </div>
   );
@@ -297,7 +300,7 @@ function Log() {
   const cls = { draft: 'ok', sent: 'warn', skipped: 'bad' } as const;
   const clear = async () => { if (confirm('Hapus seluruh log auto-reply? Cooldown dan batas per jam akan ikut reset.')) await db.arLog.clear(); };
   return (
-    <div>
+    <div className="fillcol">
       <div className="bar">
         <select value={f} onChange={(e) => setF(e.target.value as typeof f)} aria-label="Filter aksi">
           <option value="all">Semua aksi</option><option value="draft">Draft</option><option value="sent">Terkirim</option><option value="skipped">Dilewati</option>
@@ -306,21 +309,21 @@ function Log() {
         <button className="danger" onClick={() => void clear()}>Kosongkan log</button>
         <span className="mut">{rows.length} entri</span>
       </div>
-      <div className="scroll">
+      <ScrollTable stickyFirst label="Log auto-reply">
         <table>
-          <thead><tr><th>Waktu</th><th>Chat</th><th>Aturan</th><th>Aksi</th><th>Alasan</th><th>Isi</th></tr></thead>
+          <thead><tr><th>Waktu</th><th>Chat</th><th>Aturan</th><th>Aksi</th><th className="wrap">Alasan</th><th className="wrap">Isi</th></tr></thead>
           <tbody>
             {rows.map((l) => (
               <tr key={l.id}>
                 <td>{fmt(l.ts)}</td><td>{l.chatName || l.chatKey}</td><td>{l.ruleName}</td>
                 <td><span className={'pill ' + cls[l.action]}>{label[l.action]}</span></td>
-                <td>{l.reason}</td><td className="mut" style={{ maxWidth: 260, whiteSpace: 'pre-wrap' }}>{l.text.slice(0, 140)}</td>
+                <td className="wrap">{l.reason}</td><td className="mut wrap">{l.text.slice(0, 140)}</td>
               </tr>
             ))}
             {!rows.length && <tr><td colSpan={6} className="mut">Belum ada aktivitas.</td></tr>}
           </tbody>
         </table>
-      </div>
+      </ScrollTable>
     </div>
   );
 }

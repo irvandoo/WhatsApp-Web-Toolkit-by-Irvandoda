@@ -17,6 +17,8 @@ export interface ArchivedMsg {
 export type BridgeRequest =
   | { id: string; type: 'groups:list' }
   | { id: string; type: 'groups:members'; groupId: string }
+  | { id: string; type: 'labels:list' }
+  | { id: string; type: 'labels:chats'; labelId: string }
   | { id: string; type: 'ping' }
   | { id: string; type: 'chats:list' }
   | { id: string; type: 'chat:messages'; chatId: string }
@@ -82,3 +84,17 @@ export type GroupMembersResult = GroupsUnavailable | { unavailable?: false; grou
 /** groups page -> background -> content (grp:exec) */
 export type GrpMsg = { kind: 'grp:call'; op: 'list' } | { kind: 'grp:call'; op: 'members'; groupId: string };
 export type GrpExec = { kind: 'grp:exec'; op: 'list' } | { kind: 'grp:exec'; op: 'members'; groupId: string };
+
+/** WhatsApp Business labels (labels:list / labels:chats adapter ops). Internals unverified. */
+export interface LabelInfo { id: string; name: string; color?: string; count: number }
+export interface LabelChat { chatId: string; phone: string | null; name: string; isGroup: boolean }
+export type LabelsListResult = GroupsUnavailable | { unavailable?: false; labels: LabelInfo[] };
+export type LabelChatsResult = GroupsUnavailable | { unavailable?: false; labelId: string; chats: LabelChat[] };
+/** Blast page -> background (rcp:groups / rcp:group-members reuse the grp relay). */
+export type RcpMsg =
+  | { kind: 'rcp:labels' }
+  | { kind: 'rcp:label-chats'; labelId: string }
+  | { kind: 'rcp:groups' }
+  | { kind: 'rcp:group-members'; groupId: string };
+/** background -> content (labels only; groups go through grp:exec). */
+export type RcpExec = { kind: 'rcp:exec'; op: 'labels' } | { kind: 'rcp:exec'; op: 'label-chats'; labelId: string };

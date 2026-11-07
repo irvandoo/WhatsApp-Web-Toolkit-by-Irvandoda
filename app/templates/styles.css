@@ -1,8 +1,11 @@
 :root { --bg:#f6f7f8; --fg:#1b1f23; --card:#fff; --bd:#d6dade; --mut:#6a737d; --acc:#00a884; --danger:#d1383d; color-scheme: light dark; }
 @media (prefers-color-scheme: dark) { :root { --bg:#111b21; --fg:#e9edef; --card:#202c33; --bd:#37454e; --mut:#8696a0; } }
 * { box-sizing: border-box; }
+html, body, #root { height:100%; }
 body { margin:0; background:var(--bg); color:var(--fg); font:14px system-ui, sans-serif; }
-.wrap { max-width:1000px; margin:0 auto; padding:16px; }
+.page { max-width:1000px; margin:0 auto; padding:16px 16px 0; height:100%; display:flex; flex-direction:column; min-height:0; }
+.page>* { flex:none; }
+.page>.pane { flex:1; min-height:0; overflow:auto; padding:2px 2px 16px; scrollbar-gutter:stable; }
 h1 { font-size:20px; margin:0 0 12px; }
 .bar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
 .bar input, .bar select { flex:1; min-width:140px; }

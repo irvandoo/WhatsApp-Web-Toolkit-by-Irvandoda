@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { DateRange, DayStat, MsgEvent } from '../shared/analytics-types';
+import { ScrollTable } from '../shared/ui/ScrollTable';
 import { fmtNum } from './util';
 
 const DAY = 86400e3;
@@ -84,11 +85,11 @@ export function BarChart({ days, range }: { days: DayStat[]; range: DateRange })
       </div>
       <details>
         <summary>Lihat sebagai tabel{total === 0 ? ' (belum ada data)' : ''}</summary>
-        <div className="tw"><table>
+        <ScrollTable maxHeight="40vh" stickyFirst label="Data grafik"><table>
           <caption className="sr">Data grafik per {unit}</caption>
           <thead><tr><th scope="col">Periode</th><th scope="col" className="num">WA Baru</th><th scope="col" className="num">Follow-up</th><th scope="col" className="num">Pesan masuk</th></tr></thead>
           <tbody>{buckets.map((b, i) => <tr key={i}><th scope="row">{b.full}</th><td className="num">{b.newLeads}</td><td className="num">{b.followUps}</td><td className="num">{b.inbound}</td></tr>)}</tbody>
-        </table></div>
+        </table></ScrollTable>
       </details>
     </div>
   );
@@ -120,10 +121,10 @@ export function Heatmap({ events, includeGroups }: { events: MsgEvent[]; include
       </div>
       <details>
         <summary>Lihat sebagai tabel</summary>
-        <div className="tw"><table>
+        <ScrollTable maxHeight="40vh" stickyFirst label="Data peta panas"><table>
           <thead><tr><th scope="col">Hari</th>{Array.from({ length: 24 }, (_, h) => <th key={h} scope="col" className="num">{h}</th>)}</tr></thead>
           <tbody>{order.map((d) => <tr key={d}><th scope="row">{WD[d]}</th>{grid[d].map((v, h) => <td key={h} className="num">{v}</td>)}</tr>)}</tbody>
-        </table></div>
+        </table></ScrollTable>
       </details>
     </div>
   );

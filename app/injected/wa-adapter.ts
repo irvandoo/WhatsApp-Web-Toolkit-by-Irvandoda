@@ -4,6 +4,7 @@ import {
   BRIDGE_CHANNEL, type ArchivedMsg, type BridgeEnvelope, type BridgeRequest, type BridgeResponse,
   type ActivityChat, type ActivityScanResult, type ChatInfo, type LoadEarlierResult, type PingResult,
   type RegisteredResult, type GroupInfo, type GroupMember, type GroupsListResult, type GroupMembersResult,
+  type LabelInfo, type LabelChat, type LabelsListResult, type LabelChatsResult,
 } from '../shared/messages';
 import type { InboxItem } from '../shared/autoreply-types';
 
@@ -217,6 +218,69 @@ async function groupMembers(groupId: string): Promise<GroupMembersResult> {
   return { groupId, members, truncated };
 }
 
+// ---- WhatsApp Business labels (feature-detected; internals UNVERIFIED) ----
+const arrOf = (c: Any): Any[] => c?.getModelsArray?.() ?? c?.models ?? (Array.isArray(c) ? c : []);
+const labelModels = (): Any[] | null => {
+  const coll = store.collections?.Label;
+  return coll ? arrOf(coll) : null;
+};
+const labelItems = (l: Any): Any[] => arrOf(l?.labelItemCollection ?? l?.items);
+
+function labelsList(): LabelsListResult {
+  const models = labelModels();
+  if (!models) return { unavailable: true, reason: 'no-labels' };
+  const labels: LabelInfo[] = [];
+  for (const l of models) {
+    try {
+      const id = String(l?.id ?? '');
+      if (!id || l?.isDeleted || l?.deleted) continue;
+      const name = String(l?.name ?? '').trim();
+      if (!name) continue;
+      const n = labelItems(l).length;
+      const color = typeof l?.hexColor === 'string' ? l.hexColor : typeof l?.color === 'string' ? l.color : undefined;
+      labels.push({ id, name, color, count: n || (typeof l?.count === 'number' ? l.count : 0) });
+    } catch { /* skip label */ }
+  }
+  return { labels };
+}
+
+async function labelChats(labelId: string): Promise<LabelChatsResult> {
+  const models = labelModels();
+  if (!models) return { unavailable: true, reason: 'no-labels' };
+  const label = models.find((l) => String(l?.id) === labelId);
+  if (!label) return { unavailable: true, reason: 'label-not-found' };
+  const ids = new Set<string>();
+  for (const it of labelItems(label)) {
+    const t = String(it?.type ?? 'chat');
+    if (t !== 'chat' && t !== 'jid' && t !== '') continue; // skip message / contact-less items
+    const id = wid(it?.parentId ?? it?.chatId ?? it?.id);
+    if (id.includes('@')) ids.add(id);
+  }
+  if (!ids.size) { // fallback: chats carry their label ids
+    for (const c of chatsColl()) {
+      try { if ((c?.labels ?? []).map(String).includes(labelId)) ids.add(wid(c.id)); } catch { /* skip */ }
+    }
+  }
+  const chats: LabelChat[] = [];
+  for (const id of ids) {
+    try {
+      if (id.endsWith('@g.us') || id.includes('broadcast') || id.startsWith('status@') || id.endsWith('@newsletter')) continue;
+      const chat = findChat(id);
+      const idObj = chat?.id ?? id;
+      let phone: string | null = null;
+      if (/@(c\.us|s\.whatsapp\.net)$/.test(id)) phone = digits(id.split('@')[0]) || null;
+      else if (chat) phone = await phoneOf({ id: chat.id, contact: chat.contact });
+      const ct = chat?.contact ?? store.collections?.Contact?.get?.(idObj);
+      chats.push({
+        chatId: id, phone,
+        name: String(chat?.formattedTitle ?? chat?.name ?? ct?.name ?? ct?.pushname ?? ''),
+        isGroup: false,
+      });
+    } catch { /* skip */ }
+  }
+  return { labelId, chats };
+}
+
 const INBOX_TEXT_TYPES = new Set(['chat']);
 const INBOX_CAP = 500;
 
@@ -318,6 +382,10 @@ async function handle(r: BridgeRequest): Promise<BridgeResponse> {
       return { id: r.id, ok: true, data: ((): GroupsListResult => { try { return groupsList(); } catch { return { unavailable: true, reason: 'error' }; } })() };
     case 'groups:members':
       return { id: r.id, ok: true, data: await groupMembers(r.groupId).catch((): GroupMembersResult => ({ unavailable: true, reason: 'error' })) };
+    case 'labels:list':
+      return { id: r.id, ok: true, data: ((): LabelsListResult => { try { return labelsList(); } catch { return { unavailable: true, reason: 'error' }; } })() };
+    case 'labels:chats':
+      return { id: r.id, ok: true, data: await labelChats(String(r.labelId)).catch((): LabelChatsResult => ({ unavailable: true, reason: 'error' })) };
     case 'ping': {
       const data: PingResult = { adapter: 'ready', store: !!store.collections?.Chat, accountId: accountId() };
       return { id: r.id, ok: true, data };

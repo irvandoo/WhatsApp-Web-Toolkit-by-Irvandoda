@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { Interaction, Summary, UnansweredRow } from '../shared/analytics-types';
 import { exportInteractionsCsv, exportReportCsv, exportUnansweredCsv, parseReportCsv, reportTemplateCsv } from '../shared/analytics-logic';
+import { ScrollTable } from '../shared/ui/ScrollTable';
 import { download, downloadCsv, fmtDateTime, stamp } from './util';
 
 interface Props { summary: Summary; unanswered: UnansweredRow[]; interactions: Interaction[]; toast: (m: string) => void }
@@ -53,12 +54,12 @@ export function Report({ summary, unanswered, interactions, toast }: Props) {
             )}
             <p>{parsed.interactions.length} baris valid. Pratinjau 10 baris pertama:</p>
             {parsed.interactions.length > 0 && (
-              <div className="tw"><table>
+              <ScrollTable maxHeight="40vh" stickyFirst label="Pratinjau impor"><table>
                 <thead><tr><th>Nama</th><th>Nomor</th><th>Akun</th><th>Masuk pertama</th><th>Keluar pertama</th><th className="num">Masuk</th><th className="num">Keluar</th></tr></thead>
                 <tbody>{parsed.interactions.slice(0, 10).map((i) => (
                   <tr key={i.key}><td>{i.name}</td><td>{i.phone}</td><td>{i.accountId}</td><td>{i.firstInTs ? fmtDateTime(i.firstInTs) : '-'}</td><td>{i.firstOutTs ? fmtDateTime(i.firstOutTs) : '-'}</td><td className="num">{i.inCount}</td><td className="num">{i.outCount}</td></tr>
                 ))}</tbody>
-              </table></div>
+              </table></ScrollTable>
             )}
             <div className="btns">
               <button className="primary" disabled={busy || !parsed.interactions.length} onClick={() => void confirmImport()}>Konfirmasi impor {parsed.interactions.length} baris</button>

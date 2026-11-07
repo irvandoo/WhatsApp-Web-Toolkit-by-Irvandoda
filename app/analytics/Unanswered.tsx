@@ -3,6 +3,7 @@ import type { Interaction, LeadKind, UnansweredRow } from '../shared/analytics-t
 import type { Contact, CrmMsg } from '../shared/crm-types';
 import { buildUnanswered, formatDuration } from '../shared/analytics-logic';
 import { exportLeadIntelCsv, INTENT_LABEL, INTEL_NOTE, MOMENTUM_GLYPH, MOMENTUM_LABEL, TEMP_LABEL, type LeadIntel, type Momentum, type Temperature } from '../shared/lead-intel-logic';
+import { ScrollTable } from '../shared/ui/ScrollTable';
 import { downloadCsv, fmtDateTime, KIND_LABEL, PRIO_LABEL, stamp } from './util';
 
 type Prio = UnansweredRow['priority'];
@@ -92,7 +93,7 @@ export function Unanswered({ interactions, contacts, accountNames, accountId, in
   if (!rows.length) return <div className="card empty">Tidak ada chat yang menunggu balasan. Buka WhatsApp Web; pelacakan berjalan otomatis.</div>;
 
   return (
-    <div>
+    <div className="fillcol">
       <div className="counts" role="group" aria-label="Ringkasan prioritas">
         {PRIOS.map((p) => <div key={p} className="card"><b className={`w-${p}`}>{counts[p]}</b><span className="muted">{PRIO_LABEL[p]}</span></div>)}
         <div className="card"><b>{rows.length}</b><span className="muted">Total</span></div>
@@ -126,7 +127,7 @@ export function Unanswered({ interactions, contacts, accountNames, accountId, in
         <input type="search" aria-label="Cari" placeholder="Cari nama / nomor" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       <div className="muted" aria-live="polite" style={{ marginBottom: 6 }}>{view.length} dari {rows.length} chat</div>
-      <div className="card tw" style={{ padding: 0 }}>
+      <ScrollTable stickyFirst label="Tabel chat belum dibalas">
         <table>
           <thead><tr>
             {th('name', 'Nama')}{th('phone', 'Nomor')}{th('accountId', 'Akun')}{th('kind', 'Jenis')}{th('waitingMs', 'Menunggu')}{th('since', 'Sejak')}{th('priority', 'Prioritas')}{th('temp', 'Temperature')}{th('eng', 'Engagement')}{th('momentum', 'Momentum')}<th scope="col" title="Intent hanya terbaca saat chat dibuka di WhatsApp Web (isi pesan tidak disimpan)">Intent</th>{th('stage', 'Tahap CRM & tag')}
@@ -150,7 +151,7 @@ export function Unanswered({ interactions, contacts, accountNames, accountId, in
             {!view.length && <tr><td colSpan={13} className="empty">Tidak ada yang cocok dengan filter.</td></tr>}
           </tbody>
         </table>
-      </div>
+      </ScrollTable>
       <p className="muted" style={{ fontSize: 12 }}>{INTEL_NOTE}</p>
     </div>
   );

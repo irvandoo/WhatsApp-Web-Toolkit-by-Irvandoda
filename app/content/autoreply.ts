@@ -1,5 +1,6 @@
 import { ROT_KEY, sanitizeRotStore, type RotStore } from '../shared/rotation';
 import { call } from './bridge';
+import { insertErrorText, insertIntoComposer, type InsertResult } from './composer-insert';
 import { IS_FULL } from '../shared/credit';
 import { phoneFromChatId } from '../shared/crm-logic';
 import { decide, overRateLimit } from '../shared/autoreply-logic';
@@ -93,26 +94,16 @@ function toast(text: string) {
 }
 
 // ---------- composer (draft only, never presses Enter) ----------
-const COMPOSER_SEL = ['footer [contenteditable="true"][role="textbox"]', '#main footer div[contenteditable="true"]'];
-const findComposer = (): HTMLElement | null => {
-  for (const s of COMPOSER_SEL) { const el = document.querySelector<HTMLElement>(s); if (el) return el; }
-  return null;
-};
 function openChatName(): string {
   const h = document.querySelector('#main header');
   const s = h?.querySelector('span[title]') ?? h?.querySelector('span[dir="auto"]');
   return (s?.getAttribute('title') || s?.textContent || '').trim();
 }
-/** Inserts only into an EMPTY composer so we never clobber what the owner is typing. */
-function putDraft(text: string): boolean {
-  const c = findComposer();
-  if (!c || (c.innerText ?? '').replace(/​/g, '').trim()) return false;
-  c.focus();
-  text.split('\n').forEach((ln, i) => {
-    if (i > 0 && !document.execCommand('insertLineBreak')) document.execCommand('insertText', false, '\n');
-    if (ln) document.execCommand('insertText', false, ln);
-  });
-  return true;
+/** Inserts only into an EMPTY composer so we never clobber what the owner is typing. Verified read-back; false = not inserted. */
+async function putDraft(text: string): Promise<InsertResult> {
+  const r = await insertIntoComposer(text, { mode: 'empty-only' });
+  if (!r.ok && r.reason !== 'composer-not-found' && r.reason !== 'composer-not-empty') toast(insertErrorText(r));
+  return r;
 }
 
 // ---------- data ----------
@@ -217,7 +208,7 @@ async function handleItem(item: InboxItem) {
   // draft
   const nama = ctx.name || item.name;
   const sameChat = openChatName() === item.name && !!item.name;
-  if (sameChat && putDraft(text)) {
+  if (sameChat && (await putDraft(text)).ok) {
     await record({ ...base, action: 'draft', reason: 'draft diisi ke chat yang terbuka', text });
     toast(`Draft balasan untuk ${nama} sudah diisi — periksa lalu kirim`);
   } else {
@@ -229,12 +220,16 @@ async function handleItem(item: InboxItem) {
 }
 
 /** When the owner opens a chat that has a waiting draft, fill the (empty) composer. */
-function flushDrafts() {
+async function flushDrafts() {
   if (!drafts.size) return;
   const open = openChatName();
   for (const [k, d] of drafts) {
     if (Date.now() - d.at > DRAFT_TTL_MS) { drafts.delete(k); emit(); continue; }
-    if (open && open === d.name && putDraft(d.text)) { drafts.delete(k); emit(); toast(`Draft balasan untuk ${d.name} sudah diisi — periksa lalu kirim`); }
+    if (open && open === d.name) {
+      const r = await putDraft(d.text);
+      if (r.ok) { drafts.delete(k); emit(); toast(`Draft balasan untuk ${d.name} sudah diisi — periksa lalu kirim`); }
+      else if (r.reason === 'mismatch' || r.reason === 'error') { drafts.delete(k); emit(); } // already toasted; do not retry forever
+    }
   }
 }
 
@@ -245,7 +240,7 @@ async function tick() {
   try {
     if (!alive()) return teardown();
     if (!global.enabled) return;
-    flushDrafts();
+    await flushDrafts();
     if (!rules.some((r) => r.enabled)) return;
     const p = await call<PingResult>({ type: 'ping' }, 5000);
     if (!p.accountId || !p.store) return;

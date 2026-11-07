@@ -3,6 +3,7 @@ import type { PingResult, RegisteredResult } from '../shared/messages';
 import { isBlockedTarget } from '../shared/outbox-logic';
 import type { NextItem, OutboxItem } from '../shared/outbox-types';
 import { call } from './bridge';
+import { insertErrorText, insertIntoComposer, showToast } from './composer-insert';
 
 export interface OutboxState {
   mounted: boolean;
@@ -105,23 +106,6 @@ function ensureToastHost(): HTMLElement {
   return box;
 }
 
-function insertText(text: string): boolean {
-  const c = COMPOSER_SEL.map((s) => document.querySelector<HTMLElement>(s)).find(Boolean);
-  if (!c) return false;
-  c.focus();
-  const range = document.createRange();
-  range.selectNodeContents(c);
-  const s = window.getSelection();
-  s?.removeAllRanges();
-  s?.addRange(range);
-  document.execCommand('delete');
-  text.split('\n').forEach((ln, i) => {
-    if (i > 0 && !document.execCommand('insertLineBreak')) document.execCommand('insertText', false, '\n');
-    if (ln) document.execCommand('insertText', false, ln);
-  });
-  return true; // the user presses Send themselves
-}
-
 function showDraft(item: OutboxItem): void {
   const b = ensureToastHost();
   const card = document.createElement('div');
@@ -139,7 +123,14 @@ function showDraft(item: OutboxItem): void {
     btn.addEventListener('click', () => fn(btn));
     row.appendChild(btn);
   };
-  mk('Sisipkan ke chat terbuka', 'pri', (btn) => { btn.textContent = insertText(item.text) ? 'Tersisip' : 'Chat belum dibuka'; });
+  mk('Sisipkan ke chat terbuka', 'pri', (btn) => {
+    btn.disabled = true;
+    void insertIntoComposer(item.text, { mode: 'append' }).then((r) => {
+      btn.disabled = false;
+      btn.textContent = r.ok ? 'Tersisip' : r.reason === 'composer-not-found' ? 'Chat belum dibuka' : 'Gagal rapi, pakai Salin';
+      if (!r.ok) showToast(insertErrorText(r));
+    });
+  });
   mk('Salin', '', (btn) => { void navigator.clipboard?.writeText(item.text).then(() => { btn.textContent = 'Tersalin'; }, () => { btn.textContent = 'Gagal salin'; }); });
   mk('Sudah saya kirim', '', () => { void report(item.id, 'sent'); card.remove(); state.drafts = Math.max(0, state.drafts - 1); });
   mk('Tutup', '', () => { card.remove(); state.drafts = Math.max(0, state.drafts - 1); });

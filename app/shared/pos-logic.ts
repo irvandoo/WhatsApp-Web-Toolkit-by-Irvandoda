@@ -5,6 +5,7 @@ import {
   PAY_LABEL, PAY_METHODS, STATUS_LABEL,
   type DiscountType, type Order, type OrderItem, type OrderStatus, type Payment, type PayMethod, type PosSettings, type Product,
 } from './pos-types';
+import { WA_LINE_WIDTH, fenceLines, formatInvoiceTable, leftRight, normalizeForWa } from './wa-format';
 
 // ---------- formatting ----------
 const NF = new Intl.NumberFormat('id-ID');
@@ -361,16 +362,14 @@ export const DEFAULT_TEMPLATE = [
   '{items}', '--------------------------------', '{ringkasan}', 'Status : {status}', 'Metode : {metode}', '{catatan_baris}', '{pembayaran}', '', '{footer}',
 ].join('\n');
 
-const W = 32;
-const row2 = (l: string, v: string) => l + ' '.repeat(Math.max(1, W - l.length - v.length)) + v;
-const FENCE = '```';
+const row2 = (l: string, v: string) => leftRight(l, v, WA_LINE_WIDTH);
 
 export function invoiceVars(o: Order, s: PosSettings): Record<string, string> {
-  const items = o.items.map((it, i) => {
-    const lines = [`${i + 1}. ${it.name}`, `   ${it.qty} x ${fmtIdr(it.price)} = ${fmtIdr(Math.round(it.qty * it.price))}`];
-    if (it.discount > 0) lines.push(`   Diskon: -${fmtIdr(it.discount)}`);
-    return lines.join('\n');
-  }).join('\n');
+  // item table in a monospace block so columns stay aligned (see wa-format); long names wrap at WA_LINE_WIDTH
+  const items = formatInvoiceTable(o.items.map((it) => ({
+    name: it.name, qty: String(it.qty), price: fmtIdr(it.price), total: fmtIdr(Math.round(it.qty * it.price)),
+    extra: it.discount > 0 ? [{ label: 'Diskon', value: '-' + fmtIdr(it.discount) }] : undefined,
+  })));
   const due = o.remaining > 0 && o.status !== 'cancelled';
   const rows: string[] = [row2('Subtotal', fmtIdr(o.subtotal))];
   if (o.discountTotal > 0) rows.push(row2(o.discountType === 'pct' ? `Diskon ${o.discountValue}%` : 'Diskon', '-' + fmtIdr(o.discountTotal)));
@@ -385,7 +384,7 @@ export function invoiceVars(o: Order, s: PosSettings): Record<string, string> {
   return {
     toko: s.storeName, alamat: s.address, telepon_toko: s.phone, kontak_toko: s.phone ? 'Telp: ' + s.phone : '',
     nomor: o.number, tanggal: fmtDateTime(o.createdAt), pelanggan: o.customerName || 'Umum', telepon: o.customerPhone,
-    items, ringkasan: FENCE + '\n' + rows.join('\n') + '\n' + FENCE,
+    items, ringkasan: fenceLines(rows),
     subtotal: fmtIdr(o.subtotal), diskon: fmtIdr(o.discountTotal), ongkir: fmtIdr(o.shipping), pajak: fmtIdr(o.tax),
     total: fmtIdr(o.total), dibayar: fmtIdr(o.paid), sisa: fmtIdr(o.remaining),
     status: STATUS_LABEL[o.status], metode: PAY_LABEL[o.method], catatan: o.notes, catatan_baris: o.notes.trim() ? 'Catatan: ' + o.notes.trim() : '',

@@ -6,9 +6,13 @@
   "author": "Irvando Demas Arifiandani <irvando.d.a@gmail.com> (https://irvandoda.web.id)",
   "scripts": {
     "dev": "vite",
-    "build:store": "node scripts/clean-root.mjs && tsc --noEmit && vite build --mode store",
-    "build:full": "tsc --noEmit && vite build --mode full",
-    "package:store": "npm run build:store && node scripts/package-store.mjs",
+    "build": "npm run build:full",
+    "build:full": "tsc --noEmit && node scripts/clean-root.mjs && vite build --mode full",
+    "build:store": "tsc --noEmit && vite build --mode store",
+    "package": "npm run build:full && npm run build:store && node scripts/package.mjs all",
+    "package:store": "npm run build:store && node scripts/package.mjs store",
+    "package:full": "npm run build:full && node scripts/package.mjs full",
+    "prepare": "git config core.hooksPath .githooks || exit 0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

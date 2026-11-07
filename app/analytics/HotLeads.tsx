@@ -3,6 +3,7 @@ import type { Interaction } from '../shared/analytics-types';
 import type { CrmMsg } from '../shared/crm-types';
 import { formatDuration } from '../shared/analytics-logic';
 import { exportLeadIntelCsv, hotLeads, INTEL_NOTE, MOMENTUM_GLYPH, MOMENTUM_LABEL, slippingLeads, TEMP_LABEL, type LeadIntel } from '../shared/lead-intel-logic';
+import { ScrollTable } from '../shared/ui/ScrollTable';
 import { downloadCsv, fmtDateTime, PRIO_LABEL, stamp } from './util';
 
 interface Props { intel: Map<string, LeadIntel>; interactions: Interaction[]; accountId: string; includeGroups: boolean; accountNames: Map<string, string>; toast: (m: string) => void }
@@ -13,11 +14,11 @@ function Table({ rows, accountNames, toast, empty }: { rows: LeadIntel[]; accoun
     try { await chrome.runtime.sendMessage(msg); toast('Pengingat dibuat (1 jam lagi).'); } catch { toast('Gagal membuat pengingat.'); }
   }
   return (
-    <div className="card tw" style={{ padding: 0 }}>
+    <ScrollTable stickyFirst maxHeight="48vh" label="Tabel lead">
       <table>
         <thead><tr>
           <th scope="col">Nama</th><th scope="col">Nomor</th><th scope="col">Akun</th><th scope="col">Temperature</th><th scope="col" className="num">Engagement</th>
-          <th scope="col">Momentum</th><th scope="col">Prioritas</th><th scope="col">Alasan</th><th scope="col">Saran</th><th scope="col">Terakhir</th><th scope="col"><span className="sr">Aksi</span></th>
+          <th scope="col">Momentum</th><th scope="col">Prioritas</th><th scope="col" className="wrap">Alasan</th><th scope="col" className="wrap">Saran</th><th scope="col">Terakhir</th><th scope="col"><span className="sr">Aksi</span></th>
         </tr></thead>
         <tbody>
           {rows.map((l) => (
@@ -27,7 +28,7 @@ function Table({ rows, accountNames, toast, empty }: { rows: LeadIntel[]; accoun
               <td className="num"><span className="eng" aria-hidden="true"><i style={{ width: `${l.engagement}%` }} /></span>{l.engagement}</td>
               <td>{MOMENTUM_GLYPH[l.momentum]} {MOMENTUM_LABEL[l.momentum]}</td>
               <td><span className={`badge b-${l.followUpPriority}`}>{PRIO_LABEL[l.followUpPriority]}</span></td>
-              <td>{l.reason}</td><td>{l.nextAction}</td>
+              <td className="wrap">{l.reason}</td><td className="wrap">{l.nextAction}</td>
               <td>{l.lastActivityTs ? `${l.lastSender === 'in' ? 'Mereka' : 'Kita'}, ${fmtDateTime(l.lastActivityTs)}` : '-'}</td>
               <td><button onClick={() => void remind(l)}>Buat pengingat</button></td>
             </tr>
@@ -35,7 +36,7 @@ function Table({ rows, accountNames, toast, empty }: { rows: LeadIntel[]; accoun
           {!rows.length && <tr><td colSpan={11} className="empty">{empty}</td></tr>}
         </tbody>
       </table>
-    </div>
+    </ScrollTable>
   );
 }
 

@@ -78,8 +78,9 @@ export function App() {
       prev: summary.avgFirstResponseMs != null && prev?.avgFirstResponseMs != null ? prev.avgFirstResponseMs : null, invert: true },
   ];
 
+  const fill = tab === 'belum' && hasData;
   return (
-    <div className="wrap">
+    <div className="page">
       <h1>Analitik - WhatsApp Web Toolkit by Irvandoda</h1>
       <div className="bar">
         <div className="seg" role="group" aria-label="Rentang waktu">
@@ -104,6 +105,7 @@ export function App() {
         ))}
       </div>
 
+      <div className={`pane${fill ? ' fill' : ''}`}>
       {!hasData && tab !== 'laporan' && (
         <div className="card empty"><b>Belum ada data.</b><br />Buka WhatsApp Web; pelacakan berjalan otomatis.</div>
       )}
@@ -148,6 +150,8 @@ export function App() {
       {tab === 'laporan' && (
         <div role="tabpanel"><Report summary={summary} unanswered={unanswered} interactions={scoped} toast={setMsg} /></div>
       )}
+
+      </div>
 
       {msg && <div className="toast" role="status">{msg}</div>}
     </div>

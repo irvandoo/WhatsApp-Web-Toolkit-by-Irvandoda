@@ -179,7 +179,7 @@ describe('invoice text', () => {
     const o = fin({ discountType: 'pct', discountValue: 10, shipping: 5000, notes: 'Kirim sore', payments: [{ id: 'a', at: 1, amount: 5000, method: 'cash' }] });
     const t = buildInvoiceText(o, s);
     expect(t).toContain('*Toko Maju*'); expect(t).toContain('INV-202611-0001'); expect(t).toContain('1. Kopi');
-    expect(t).toContain('2 x Rp 10.000 = Rp 20.000'); expect(t).toContain('Diskon 10%'); expect(t).toContain('Catatan: Kirim sore');
+    expect(t).toMatch(/2 x Rp 10.000 +Rp 20.000/); expect(t).toContain('Diskon 10%'); expect(t).toContain('Catatan: Kirim sore');
     expect(t).toContain('BCA 123'); expect(t).toContain('Sisa'); expect(t).toContain('Telp: 0811'); expect(t.trim().endsWith('Makasih')).toBe(true);
     const widths = t.split('\n').filter((l) => /^(Subtotal|TOTAL|Dibayar|Sisa)/.test(l)).map((l) => l.length);
     expect(new Set(widths).size).toBe(1);

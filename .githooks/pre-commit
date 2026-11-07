@@ -1,0 +1,9 @@
+#!/bin/sh
+# Keeps the ready-to-load extension in the repo root in sync with ./app: when sources changed,
+# rebuild (full flavor) and stage the generated files so users never need npm.
+if git diff --cached --name-only | grep -qE '^(app/|manifest\.config\.ts|vite\.config\.ts|package\.json)'; then
+  echo "[pre-commit] source changed -> rebuilding extension (npm run build:full)"
+  npm run build:full >/dev/null 2>&1 || { echo "[pre-commit] build failed — run 'npm run build:full' to see errors"; exit 1; }
+  git add -A -- assets popup options dashboard crm templates analytics autoreply blast pos groups presets public _locales manifest.json service-worker-loader.js virtual-session.js 2>/dev/null
+fi
+exit 0

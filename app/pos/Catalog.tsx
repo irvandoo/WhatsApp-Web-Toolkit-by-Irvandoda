@@ -1,6 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
 import { fmtIdr, isLowStock, productsFromCsv, productsToCsv, productTemplateCsv } from '../shared/pos-logic';
 import type { Product } from '../shared/pos-types';
+import { ScrollTable } from '../shared/ui/ScrollTable';
+import { More, useLimit } from './More';
 import { download, downsizePhoto, send } from './util';
 
 const empty = (): Partial<Product> & { name: string } => ({ name: '', sku: '', category: '', price: 0, cost: null, stock: null, unit: 'pcs', active: true, note: '', photo: null });
@@ -21,6 +23,7 @@ export function Catalog({ products }: { products: Product[] }) {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [products, q, cat, onlyLow]);
 
+  const [lim, more] = useLimit(`${q}|${cat}|${onlyLow}`);
   const save = async () => {
     if (!edit) return;
     try { await send({ kind: 'pos:product:upsert', product: edit }); setEdit(null); setMsg(''); } catch (e) { setMsg(String((e as Error).message)); }
@@ -38,7 +41,7 @@ export function Catalog({ products }: { products: Product[] }) {
   const num = (v: string): number | null => (v.trim() === '' ? null : Math.round(Number(v)));
 
   return (
-    <div>
+    <div className="fillcol">
       <div className="bar">
         <input placeholder="Cari nama / SKU" value={q} onChange={(e) => setQ(e.target.value)} />
         <select value={cat} onChange={(e) => setCat(e.target.value)}>
@@ -54,24 +57,27 @@ export function Catalog({ products }: { products: Product[] }) {
         <input ref={file} type="file" accept=".csv,text/csv" hidden onChange={(e) => void onFile(e.target.files?.[0])} />
       </div>
       {msg && <p className="note">{msg}</p>}
+      <ScrollTable label="Katalog produk">
       <table>
-        <thead><tr><th></th><th>SKU</th><th>Nama</th><th>Kategori</th><th className="r">Harga</th><th className="r">Modal</th><th className="r">Stok</th><th></th></tr></thead>
+        <thead><tr><th></th><th>SKU</th><th>Nama</th><th>Kategori</th><th className="num">Harga</th><th className="num">Modal</th><th className="num">Stok</th><th></th></tr></thead>
         <tbody>
-          {list.map((p) => (
+          {list.slice(0, lim).map((p) => (
             <tr key={p.id} className={(p.active ? '' : 'off ') + (isLowStock(p) ? 'low' : '')}>
               <td>{p.photo ? <img className="thumb" src={p.photo} alt="" /> : null}</td>
               <td>{p.sku}</td>
-              <td>{p.name}{!p.active && <small className="mut"> (nonaktif)</small>}</td>
+              <td className="wrap">{p.name}{!p.active && <small className="mut"> (nonaktif)</small>}</td>
               <td>{p.category}</td>
-              <td className="r">{fmtIdr(p.price)}</td>
-              <td className="r">{p.cost == null ? '-' : fmtIdr(p.cost)}</td>
-              <td className="r">{p.stock == null ? '∞' : `${p.stock} ${p.unit}`}</td>
-              <td className="r"><button onClick={() => setEdit({ ...p })}>Ubah</button> <button onClick={() => void del(p)}>Hapus</button></td>
+              <td className="num">{fmtIdr(p.price)}</td>
+              <td className="num">{p.cost == null ? '-' : fmtIdr(p.cost)}</td>
+              <td className="num">{p.stock == null ? '∞' : `${p.stock} ${p.unit}`}</td>
+              <td className="num"><button onClick={() => setEdit({ ...p })}>Ubah</button> <button onClick={() => void del(p)}>Hapus</button></td>
             </tr>
           ))}
           {!list.length && <tr><td colSpan={8} className="mut">Belum ada produk.</td></tr>}
         </tbody>
       </table>
+      </ScrollTable>
+      {list.length > lim && <More shown={lim} total={list.length} onMore={more} />}
 
       {edit && (
         <div className="modal" onClick={() => setEdit(null)}>

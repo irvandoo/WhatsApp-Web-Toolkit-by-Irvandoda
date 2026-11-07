@@ -1,4 +1,5 @@
 import { fmtDateTime, fmtIdr, lineTotal } from '../shared/pos-logic';
+import { ScrollTable } from '../shared/ui/ScrollTable';
 import { PAY_LABEL, STATUS_LABEL, type Order, type PosSettings } from '../shared/pos-types';
 
 /** Printable invoice. On screen it is a preview; @media print shows only this element (see pos.css). */
@@ -19,17 +20,19 @@ export function Invoice({ o, s }: { o: Order; s: PosSettings }) {
         <div><span>Pelanggan</span><b>{o.customerName || 'Umum'}{o.customerPhone ? ` (${o.customerPhone})` : ''}</b></div>
         <div><span>Status</span><b>{STATUS_LABEL[o.status]} / {PAY_LABEL[o.method]}</b></div>
       </div>
+      <ScrollTable label="Item nota">
       <table>
-        <thead><tr><th>Item</th><th className="r">Qty</th><th className="r">Harga</th><th className="r">Jumlah</th></tr></thead>
+        <thead><tr><th>Item</th><th className="num">Qty</th><th className="num">Harga</th><th className="num">Jumlah</th></tr></thead>
         <tbody>
           {o.items.map((it, i) => (
             <tr key={i}>
-              <td>{it.name}{it.discount > 0 && <div className="sm">Diskon -{fmtIdr(it.discount)}</div>}</td>
-              <td className="r">{it.qty}</td><td className="r">{fmtIdr(it.price)}</td><td className="r">{fmtIdr(lineTotal(it))}</td>
+              <td className="wrap">{it.name}{it.discount > 0 && <div className="sm">Diskon -{fmtIdr(it.discount)}</div>}</td>
+              <td className="num">{it.qty}</td><td className="num">{fmtIdr(it.price)}</td><td className="num">{fmtIdr(lineTotal(it))}</td>
             </tr>
           ))}
         </tbody>
       </table>
+      </ScrollTable>
       <div className="tots">
         <div><span>Subtotal</span><b>{fmtIdr(o.subtotal)}</b></div>
         {o.discountTotal > 0 && <div><span>Diskon{o.discountType === 'pct' ? ` ${o.discountValue}%` : ''}</span><b>-{fmtIdr(o.discountTotal)}</b></div>}

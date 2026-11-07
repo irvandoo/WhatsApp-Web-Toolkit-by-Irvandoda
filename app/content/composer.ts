@@ -3,6 +3,7 @@ import type { ChatInfo } from '../shared/messages';
 import { type TplVars } from '../shared/template-engine';
 import { ROT_KEY, renderWithRotation, sanitizeRotStore } from '../shared/rotation';
 import { listChats } from './sync';
+import { insertErrorText, insertIntoComposer, showToast } from './composer-insert';
 
 const SEL = ['footer [contenteditable="true"][role="textbox"]', '#main footer div[contenteditable="true"]'];
 const isComposer = (el: Element | null): el is HTMLElement => !!el && SEL.some((s) => el.matches(s));
@@ -116,20 +117,6 @@ async function buildVars(): Promise<TplVars> {
 }
 
 // ---------- insertion ----------
-function insertText(c: HTMLElement, text: string) {
-  c.focus();
-  const range = document.createRange();
-  range.selectNodeContents(c);
-  const s = window.getSelection();
-  s?.removeAllRanges();
-  s?.addRange(range);
-  document.execCommand('delete');
-  text.split('\n').forEach((ln, i) => {
-    if (i > 0 && !document.execCommand('insertLineBreak')) document.execCommand('insertText', false, '\n');
-    if (ln) document.execCommand('insertText', false, ln);
-  });
-}
-
 async function pick(t: Template) {
   const c = activeComposer;
   hide();
@@ -139,7 +126,8 @@ async function pick(t: Template) {
   try { store = sanitizeRotStore((await chrome.storage.local.get(ROT_KEY))[ROT_KEY]); } catch { /* ignore */ }
   const r = renderWithRotation(t, vars, store[t.id]);
   if (t.variants?.some((v) => v.trim())) { store[t.id] = r.state; try { await chrome.storage.local.set({ [ROT_KEY]: store }); } catch { /* ignore */ } }
-  insertText(c, r.text);
+  const ins = await insertIntoComposer(r.text, { mode: 'replace', composer: c });
+  if (!ins.ok) { showToast(insertErrorText(ins)); return; }
   try { await chrome.runtime.sendMessage({ kind: 'tpl:use', id: t.id }); } catch { /* ignore */ }
 }
 

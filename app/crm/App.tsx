@@ -1,3 +1,4 @@
+import { ScrollTable } from '../shared/ui/ScrollTable';
 import { liveQuery } from 'dexie';
 import { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_STAGES, type Contact, type CrmMsg, type Reminder } from '../shared/crm-types';
@@ -55,7 +56,7 @@ export function App() {
 
   const tabs: [Tab, string][] = [['kanban', 'Kanban'], ['daftar', 'Daftar'], ['pengingat', 'Pengingat'], ['pipeline', 'Pipeline']];
   return (
-    <div className="wrap">
+    <div className="page">
       <h1>CRM - WhatsApp Web Toolkit by Irvandoda</h1>
       <nav>{tabs.map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</nav>
       {(tab === 'kanban' || tab === 'daftar') && (
@@ -73,11 +74,13 @@ export function App() {
           <button className={byEng ? 'on' : ''} aria-pressed={byEng} onClick={() => setByEng(!byEng)}>Urut engagement</button>
         </div>
       )}
+      <div className={'pane' + (tab === 'kanban' || tab === 'daftar' || tab === 'pengingat' ? ' fill' : '')}>
       {tab === 'kanban' && <Kanban contacts={filtered} stages={stages} intel={intel} byEng={byEng} />}
       {tab === 'daftar' && <List contacts={filtered} intel={intel} />}
       {tab === 'pengingat' && <Reminders reminders={reminders} contacts={contacts} />}
       {tab === 'pipeline' && <Pipeline stages={stages} />}
-      {(tab === 'kanban' || tab === 'daftar') && <p className="mut" style={{ fontSize: 12 }}>{INTEL_NOTE}</p>}
+      {(tab === 'kanban' || tab === 'daftar') && <p className="mut note">{INTEL_NOTE}</p>}
+      </div>
     </div>
   );
 }
@@ -100,6 +103,7 @@ function Kanban({ contacts, stages, intel, byEng }: { contacts: Contact[]; stage
     if (c && c.stage !== stage) void send({ kind: 'crm:contact:upsert', contact: { accountId: c.accountId, chatId: c.chatId, stage } });
   };
   return (
+    <ScrollTable className="fillcol" maxHeight="none" label="Papan kanban CRM">
     <div className="board">
       {stages.map((st) => {
         const items = contacts.filter((c) => (stages.includes(c.stage) ? c.stage : stages[0]) === st);
@@ -110,7 +114,8 @@ function Kanban({ contacts, stages, intel, byEng }: { contacts: Contact[]; stage
             onDragOver={(e) => { e.preventDefault(); setOver(st); }}
             onDragLeave={() => setOver('')}
             onDrop={(e) => { e.preventDefault(); drop(st, e.dataTransfer.getData('text/plain')); }}>
-            <h3>{st} <small>({items.length}) {idr(total)}</small></h3>
+            <h3 data-pan>{st} <small>({items.length}) {idr(total)}</small></h3>
+            <div className="items">
             {items.map((c) => (
               <div key={c.key} className="card" draggable onDragStart={(e) => e.dataTransfer.setData('text/plain', c.key)}>
                 <b>{c.name || c.phone || c.chatId}</b>
@@ -120,10 +125,12 @@ function Kanban({ contacts, stages, intel, byEng }: { contacts: Contact[]; stage
                 <IntelBadges l={intel.get(c.key)} />
               </div>
             ))}
+            </div>
           </div>
         );
       })}
     </div>
+    </ScrollTable>
   );
 }
 
@@ -147,7 +154,7 @@ function List({ contacts, intel }: { contacts: Contact[]; intel: Map<string, Lea
     });
     return r;
   }, [contacts, sk, asc, intel]);
-  const th = (k: SortKey, l: string) => <th onClick={() => { if (sk === k) setAsc(!asc); else { setSk(k); setAsc(true); } }}>{l}{sk === k ? (asc ? ' ▲' : ' ▼') : ''}</th>;
+  const th = (k: SortKey, l: string) => <th aria-sort={sk === k ? (asc ? 'ascending' : 'descending') : 'none'}><button type="button" className="thbtn" onClick={() => { if (sk === k) setAsc(!asc); else { setSk(k); setAsc(true); } }}>{l}{sk === k ? (asc ? ' ▲' : ' ▼') : ''}</button></th>;
   const toggle = (k: string) => setSel((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const applyBulk = async () => {
     const t = bulk.trim();
@@ -161,31 +168,33 @@ function List({ contacts, intel }: { contacts: Contact[]; intel: Map<string, Lea
     download(`crm.${format}`, r.data, format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json');
   };
   return (
-    <>
+    <div className="fillcol">
       <div className="bar">
         <input placeholder="Tag untuk yang dipilih" value={bulk} onChange={(e) => setBulk(e.target.value)} />
         <button disabled={!sel.size || !bulk.trim()} onClick={() => void applyBulk()}>Tambah tag ({sel.size})</button>
         <button onClick={() => void exp('csv')}>Ekspor CSV</button>
         <button onClick={() => void exp('json')}>Ekspor JSON</button>
       </div>
+      <ScrollTable label="Daftar kontak CRM">
       <table>
         <thead><tr><th><input type="checkbox" checked={!!rows.length && sel.size === rows.length} onChange={(e) => setSel(e.target.checked ? new Set(rows.map((r) => r.key)) : new Set())} /></th>
-          {th('name', 'Nama')}{th('phone', 'Telepon')}{th('stage', 'Tahap')}<th>Tag</th>{th('temp', 'Temperature')}{th('eng', 'Engagement')}{th('prio', 'Follow-up')}{th('value', 'Nilai')}{th('updatedAt', 'Diperbarui')}</tr></thead>
+          {th('name', 'Nama')}{th('phone', 'Telepon')}{th('stage', 'Tahap')}<th className="wrap">Tag</th>{th('temp', 'Temperature')}{th('eng', 'Engagement')}{th('prio', 'Follow-up')}{th('value', 'Nilai')}{th('updatedAt', 'Diperbarui')}</tr></thead>
         <tbody>
           {rows.map((c) => (
             <tr key={c.key}>
               <td><input type="checkbox" checked={sel.has(c.key)} onChange={() => toggle(c.key)} /></td>
               <td>{c.name || c.chatId}{c.optOut ? ' (opt-out)' : ''}</td><td>{c.phone}</td><td>{c.stage}</td>
-              <td>{c.tags.join(', ')}</td><td>{intel.get(c.key) ? TEMP_LABEL[intel.get(c.key)!.temperature] : '-'}</td>
-              <td>{intel.get(c.key)?.engagement ?? '-'}</td>
-              <td title={intel.get(c.key)?.nextAction}>{intel.get(c.key) ? `${FOLLOW_LABEL[intel.get(c.key)!.followUpPriority]}: ${intel.get(c.key)!.reason}` : '-'}</td>
-              <td>{idr(c.value)}</td><td>{new Date(c.updatedAt).toLocaleString('id-ID')}</td>
+              <td className="wrap">{c.tags.join(', ')}</td><td>{intel.get(c.key) ? TEMP_LABEL[intel.get(c.key)!.temperature] : '-'}</td>
+              <td className="num">{intel.get(c.key)?.engagement ?? '-'}</td>
+              <td className="wrap" title={intel.get(c.key)?.nextAction}>{intel.get(c.key) ? `${FOLLOW_LABEL[intel.get(c.key)!.followUpPriority]}: ${intel.get(c.key)!.reason}` : '-'}</td>
+              <td className="num">{idr(c.value)}</td><td>{new Date(c.updatedAt).toLocaleString('id-ID')}</td>
             </tr>
           ))}
           {!rows.length && <tr><td colSpan={10} className="mut">Belum ada kontak.</td></tr>}
         </tbody>
       </table>
-    </>
+      </ScrollTable>
+    </div>
   );
 }
 
@@ -194,19 +203,21 @@ function Reminders({ reminders, contacts }: { reminders: Reminder[]; contacts: C
   const name = (k: string) => { const c = contacts.find((x) => x.key === k); return c?.name || c?.phone || k; };
   const now = Date.now();
   return (
+    <div className="fillcol"><ScrollTable label="Pengingat">
     <table>
-      <thead><tr><th>Jatuh tempo</th><th>Kontak</th><th>Catatan</th><th /></tr></thead>
+      <thead><tr><th>Jatuh tempo</th><th>Kontak</th><th className="wrap">Catatan</th><th /></tr></thead>
       <tbody>
         {open.map((r) => (
           <tr key={r.id}>
             <td className={r.dueAt <= now ? 'overdue' : ''}>{new Date(r.dueAt).toLocaleString('id-ID')}</td>
-            <td>{name(r.contactKey)}</td><td>{r.text}</td>
+            <td>{name(r.contactKey)}</td><td className="wrap">{r.text}</td>
             <td><button onClick={() => void send({ kind: 'crm:reminder:done', id: r.id })}>Selesai</button></td>
           </tr>
         ))}
         {!open.length && <tr><td colSpan={4} className="mut">Tidak ada pengingat terbuka.</td></tr>}
       </tbody>
     </table>
+    </ScrollTable></div>
   );
 }
 

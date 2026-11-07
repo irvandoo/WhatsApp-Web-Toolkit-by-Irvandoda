@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { ScrollTable } from '../shared/ui/ScrollTable';
 import { CREDIT, IS_FULL } from '../shared/credit';
 import type { Account, AccountGroup, RuntimeMsg } from '../shared/messages';
 import { isOnline, useAccounts, useGroups, useNow, useSessions } from '../shared/ui/hooks';
@@ -12,16 +13,18 @@ export function App() {
   const [tab, setTab] = useState<Tab>('accounts');
   const tabs: [Tab, string][] = [['accounts', t.tabAccounts], ['sessions', t.tabSessions], ['registry', t.tabRegistry], ['about', t.tabAbout]];
   return (
-    <div className="wrap">
+    <div className="page">
       <header className="top"><h1>{CREDIT.product} - {t.hub}</h1>
         <a href="https://web.whatsapp.com" target="_blank" rel="noreferrer">{t.openWA}</a></header>
       <nav role="tablist">
         {tabs.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>)}
       </nav>
+      <div className={'pane' + (tab === 'sessions' ? ' fill' : '')}>
       {tab === 'accounts' && <Accounts />}
       {tab === 'sessions' && <Sessions />}
       {tab === 'registry' && <Registry />}
       {tab === 'about' && <AboutTab />}
+      </div>
     </div>
   );
 }
@@ -130,16 +133,16 @@ function Sessions() {
   const sessions = useSessions(), accounts = useAccounts();
   const nameOf = (id: string) => accounts.find(a => a.id === id)?.name ?? t.unknownAcc;
   const sorted = [...sessions].sort((a, b) => b.createdAt - a.createdAt);
-  return <>
+  return <div className="fillcol">
     <div className="warn" role="alert"><strong>{t.expTitle}</strong><p style={{ margin: '4px 0 0' }}>{t.expBody}</p></div>
     {!sorted.length ? <p className="muted">{t.noSessions}</p> :
-      <table><thead><tr><th>{t.account}</th><th>{t.label}</th><th>{t.created}</th><th>{t.size}</th><th /></tr></thead>
+      <ScrollTable stickyFirst label="Sesi tersimpan"><table><thead><tr><th>{t.account}</th><th>{t.label}</th><th>{t.created}</th><th>{t.size}</th><th /></tr></thead>
         <tbody>{sorted.map(s => (
           <tr key={s.id}><td>{nameOf(s.accountId)}</td><td>{s.label}</td>
             <td>{new Date(s.createdAt).toLocaleString('id-ID')}</td><td>{(s.bytes / 1024).toFixed(1)} KB</td>
             <td><button className="danger" onClick={() => confirm(t.confirmDeleteSession) && send({ kind: 'session:delete', id: s.id })}>{t.delete}</button></td></tr>
-        ))}</tbody></table>}
-  </>;
+        ))}</tbody></table></ScrollTable>}
+  </div>;
 }
 
 function Registry() {

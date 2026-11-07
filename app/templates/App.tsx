@@ -113,7 +113,7 @@ export function App() {
   const scBad = edit && edit.shortcut !== '' && !validateShortcut(edit.shortcut);
 
   return (
-    <div className="wrap">
+    <div className="page">
       <h1>Template Pesan</h1>
       <div className="bar">
         <input placeholder="Cari template..." value={q} onChange={(e) => setQ(e.target.value)} />
@@ -129,6 +129,7 @@ export function App() {
       </div>
       {msg && <p className={msg.err ? 'err' : 'ok'}>{msg.t}</p>}
 
+      <div className="pane">
       {edit && (
         <div className="form">
           <div className="two">
@@ -178,6 +179,7 @@ export function App() {
           </div>
         ))}
         {!shown.length && <p className="meta">Belum ada template.</p>}
+      </div>
       </div>
     </div>
   );

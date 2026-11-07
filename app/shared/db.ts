@@ -3,7 +3,7 @@ import type { Interaction, MsgEvent } from './analytics-types';
 import type { Contact, CrmNote, PipelineConfig, Reminder, Template } from './crm-types';
 import type { Slot } from './slots';
 import type { ArLogEntry, ArRule } from './autoreply-types';
-import type { Order, PosSettings, Product } from './pos-types';
+import type { Category, LicenseCode, Order, PosSettings, Product, StockMove } from './pos-types';
 import type { Campaign, OutboxItem, Schedule, SendLogEntry } from './outbox-types';
 import type { Account, AccountGroup, ArchivedMsg, SessionMeta } from './messages';
 
@@ -31,6 +31,9 @@ class ToolkitDB extends Dexie {
   products!: Table<Product, string>;
   orders!: Table<Order, string>;
   posSettings!: Table<PosSettings, string>;
+  categories!: Table<Category, string>;
+  stockMoves!: Table<StockMove, string>;
+  licenseCodes!: Table<LicenseCode, string>;
   campaigns!: Table<Campaign, string>;
   outbox!: Table<OutboxItem, string>;
   schedules!: Table<Schedule, string>;
@@ -76,6 +79,12 @@ class ToolkitDB extends Dexie {
       orders: 'id, contactKey, status, createdAt, [status+createdAt]',
       posSettings: 'id',
     });
+    this.version(9).stores({
+      products: 'id, sku, category, active, type',
+      categories: 'id, name',
+      stockMoves: 'id, productId, ts',
+      licenseCodes: 'id, productId, status, orderId',
+    }).upgrade((tx) => tx.table('products').toCollection().modify((p: { type?: string }) => { if (!p.type) p.type = 'fisik'; }));
   }
 }
 export const db = new ToolkitDB();

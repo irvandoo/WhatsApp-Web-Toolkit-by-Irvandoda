@@ -19,8 +19,8 @@ function classicInjected(): Plugin {
   return { name: 'wwt-classic-injected', buildStart: build };
 }
 
-// Sources live in ./app. The `store` build is emitted straight into the repository root
-// so the root folder can be loaded in Chrome as-is ("Load unpacked"); `full` goes to dist/full.
+// Sources live in ./app. The `full` build (all features) is emitted straight into the repository root
+// so the root folder can be loaded in Chrome as-is ("Load unpacked"); the Chrome Web Store build goes to dist/store.
 export default defineConfig(({ mode }) => {
   const full = mode === 'full';
   const app = path.resolve(__dirname, 'app');
@@ -32,8 +32,8 @@ export default defineConfig(({ mode }) => {
     define: { __FLAVOR__: JSON.stringify(full ? 'full' : 'store') },
     cacheDir: path.resolve(__dirname, 'node_modules/.vite'),
     build: {
-      outDir: full ? path.resolve(__dirname, 'dist/full') : __dirname,
-      emptyOutDir: full, // root build is cleaned by scripts/clean-root.mjs
+      outDir: full ? __dirname : path.resolve(__dirname, 'dist/store'),
+      emptyOutDir: !full, // the root build is cleaned by scripts/clean-root.mjs instead
       rollupOptions: {
         input: {
           dashboard: path.resolve(app, 'dashboard/index.html'),

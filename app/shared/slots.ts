@@ -12,16 +12,45 @@ export interface Slot {
   accountId: string | null; // WA id once known
   createdAt: number;
   lastUsedAt: number;
+  // --- additive, optional (no Dexie index change) ---
+  status?: SlotState;      // latest reported by a WA tab holding this slot
+  statusTs?: number;       // when it was reported; older than STATUS_STALE_MS => 'inactive'
+  statusTabId?: number;    // hint only (verified before use)
+  unread?: number;
+  waPhone?: string;        // digits, derived from the bound WA id
+  waName?: string;
+  pinned?: boolean;
+  archived?: boolean;
+  order?: number;          // manual order, lower first
 }
+
+export type SlotState = 'qr' | 'loading' | 'online' | 'offline' | 'logged-out' | 'unknown';
+export type SlotView = SlotState | 'inactive';
+export const SLOT_STATES: readonly SlotState[] = ['qr', 'loading', 'online', 'offline', 'logged-out', 'unknown'];
+export const STATUS_STALE_MS = 45_000;
+export const PURGE_QUEUE_KEY = 'wwt-purge-queue';
 
 export type SlotMsg =
   | { kind: 'slot:list' }
-  | { kind: 'slot:create'; label: string; color?: string; groupId?: string | null }
-  | { kind: 'slot:update'; id: string; patch: Partial<Pick<Slot, 'label' | 'color' | 'groupId' | 'note'>> }
+  | { kind: 'slot:create'; label: string; color?: string; groupId?: string | null; note?: string }
+  | { kind: 'slot:bulk-create'; labels: string[]; groupId?: string | null; color?: string }
+  | { kind: 'slot:update'; id: string; patch: SlotPatch }
+  | { kind: 'slot:bulk-update'; ids: string[]; patch: SlotPatch }
   | { kind: 'slot:delete'; id: string }
   | { kind: 'slot:touch'; id: string }
   | { kind: 'slot:bind'; id: string; accountId: string }
-  | { kind: 'slot:open-tab'; id: string };
+  | { kind: 'slot:open-tab'; id: string }
+  | { kind: 'slot:status'; id: string; state: SlotState; ts: number; accountId?: string | null; unread?: number }
+  | { kind: 'slot:focus'; id: string }
+  | { kind: 'slot:switch-here'; id: string }
+  | { kind: 'slot:purge'; id: string }
+  | { kind: 'slot:export' }
+  | { kind: 'slot:import'; json: string };
+
+export type SlotPatch = Partial<Pick<Slot, 'label' | 'color' | 'groupId' | 'note' | 'pinned' | 'archived' | 'order'>>;
+
+/** background -> content (tabs.sendMessage). Deliberately not 'slot:' so the extension-page router ignores them. */
+export type SlotExec = { kind: 'slotx:holds'; id: string } | { kind: 'slotx:purge'; id: string } | { kind: 'slotx:switch'; id: string };
 
 /** Storage/IDB/BroadcastChannel name prefix for a slot. Must match injected/virtual-session.ts. */
 export const slotPrefix = (sid: string): string => `wwt:${sid}:`;

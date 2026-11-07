@@ -5,6 +5,7 @@ import {
   ORDER_STATUSES, PAY_LABEL, PAY_METHODS, STATUS_LABEL,
   type DiscountType, type Order, type OrderItem, type OrderStatus, type Payment, type PayMethod, type PosSettings, type Product,
 } from '../shared/pos-types';
+import { ScrollTable } from '../shared/ui/ScrollTable';
 import { send } from './util';
 
 interface Props { products: Product[]; contacts: Contact[]; settings: PosSettings; editing: Order | null; onSaved: (o: Order) => void; onCancel: () => void }
@@ -109,22 +110,24 @@ export function Cashier({ products, contacts, settings, editing, onSaved, onCanc
         </div>
         {contactKey && <small className="mut">Terhubung ke kontak CRM</small>}
 
+        <ScrollTable maxHeight="45vh" stickyFirst label="Keranjang">
         <table>
-          <thead><tr><th>Item</th><th>Qty</th><th>Harga</th><th>Diskon</th><th className="r">Jumlah</th><th></th></tr></thead>
+          <thead><tr><th>Item</th><th className="num">Qty</th><th className="num">Harga</th><th className="num">Diskon</th><th className="num">Jumlah</th><th></th></tr></thead>
           <tbody>
             {items.map((it, i) => (
               <tr key={i}>
-                <td>{it.productId ? it.name : <input value={it.name} onChange={(ev) => patchItem(i, { name: ev.target.value })} />}<br /><small className="mut">{it.sku}</small></td>
+                <td className="wrap">{it.productId ? it.name : <input value={it.name} onChange={(ev) => patchItem(i, { name: ev.target.value })} />}<br /><small className="mut">{it.sku}</small></td>
                 <td><input className="n" type="number" min={0.01} step="any" value={it.qty} onChange={(ev) => patchItem(i, { qty: Number(ev.target.value) })} /></td>
                 <td><input className="n w" type="number" min={0} value={it.price} onChange={(ev) => patchItem(i, { price: Math.max(0, Math.round(Number(ev.target.value) || 0)) })} /></td>
                 <td><input className="n w" type="number" min={0} value={it.discount} onChange={(ev) => patchItem(i, { discount: Math.max(0, Math.round(Number(ev.target.value) || 0)) })} /></td>
-                <td className="r">{fmtIdr(lineTotal(it))}</td>
+                <td className="num">{fmtIdr(lineTotal(it))}</td>
                 <td><button onClick={() => setItems((c) => c.filter((_, j) => j !== i))}>x</button></td>
               </tr>
             ))}
             {!items.length && <tr><td colSpan={6} className="mut">Keranjang kosong.</td></tr>}
           </tbody>
         </table>
+        </ScrollTable>
 
         <div className="grid">
           <label>Diskon pesanan

@@ -7,6 +7,7 @@ import {
   buildVcard, crmPhoneSet, filterMembers, membersCsv, membersJson, mergeMembers,
   type MergedMember,
 } from '../shared/groups-logic';
+import { ScrollTable } from '../shared/ui/ScrollTable';
 import type { GroupInfo, GroupMember, GroupMembersResult, GroupsListResult, GrpMsg } from '../shared/messages';
 
 const relay = <T,>(m: GrpMsg): Promise<T> => chrome.runtime.sendMessage(m) as Promise<T>;
@@ -39,7 +40,7 @@ function useLive<T>(fn: () => Promise<T>, init: T): T {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const MAX_ROWS = 500;
+const PAGE_ROWS = 200;
 
 export function App() {
   const contacts = useLive(() => db.contacts.toArray(), [] as Contact[]);
@@ -62,6 +63,7 @@ export function App() {
   const [excludeMe, setExcludeMe] = useState(true);
   const [mq, setMq] = useState('');
   const [msel, setMsel] = useState<Set<string>>(new Set());
+  const [limit, setLimit] = useState(PAGE_ROWS);
 
   const say = (s: string) => { setToast(s); setTimeout(() => setToast(''), 4000); };
 
@@ -110,6 +112,7 @@ export function App() {
   const rows = useMemo(
     () => filterMembers(merged, { nonAdminOnly: nonAdmin, notInCrmOnly: notInCrm, withPhoneOnly: withPhone, query: mq }, crmPhones),
     [merged, nonAdmin, notInCrm, withPhone, mq, crmPhones]);
+  useEffect(() => { setLimit(PAGE_ROWS); }, [rows]);
   const totalRaw = useMemo(() => results.reduce((a, r) => a + r.members.length, 0), [results]);
   const noPhone = useMemo(() => merged.filter((m) => !m.phone).length, [merged]);
 
@@ -198,7 +201,7 @@ export function App() {
       </section>
 
       {results.length > 0 && (
-        <section aria-labelledby="s3">
+        <section aria-labelledby="s3" className="results">
           <h2 id="s3">Hasil</h2>
           <div className="stats">
             <span>Total mentah: <b>{totalRaw}</b></span>
@@ -222,7 +225,7 @@ export function App() {
             <button disabled={busy || !withNum.length} onClick={() => void addToCrm()}>Tambah ke CRM</button>
             <button disabled={!withNum.length} onClick={() => void toBlast()}>Gunakan untuk blast</button>
           </div>
-          <div className="tw">
+          <ScrollTable stickyFirst label="Hasil anggota grup">
             <table>
               <thead><tr>
                 <th><input type="checkbox" aria-label="Pilih semua baris" checked={!!rows.length && rows.every((r) => msel.has(r.key))}
@@ -230,12 +233,12 @@ export function App() {
                 <th>Nomor</th><th>Nama</th><th>Grup</th><th>Admin?</th><th>Di CRM?</th>
               </tr></thead>
               <tbody>
-                {rows.slice(0, MAX_ROWS).map((m) => (
+                {rows.slice(0, limit).map((m) => (
                   <tr key={m.key}>
                     <td><input type="checkbox" aria-label={`Pilih ${m.phone || m.name}`} checked={msel.has(m.key)} onChange={() => setMsel(toggle(msel, m.key))} /></td>
                     <td>{m.phone || <span className="mut">(tidak diketahui)</span>}</td>
-                    <td>{m.name}</td>
-                    <td>{m.groups.join(', ')}</td>
+                    <td className="wrap">{m.name}</td>
+                    <td className="wrap">{m.groups.join(', ')}</td>
                     <td>{m.isAdmin ? 'Ya' : '-'}</td>
                     <td>{m.phone && crmPhones.has(m.phone) ? 'Ya' : 'Belum'}</td>
                   </tr>
@@ -243,8 +246,11 @@ export function App() {
                 {!rows.length && <tr><td colSpan={6} className="mut">Tidak ada data yang cocok.</td></tr>}
               </tbody>
             </table>
+          </ScrollTable>
+          <div className="bar more">
+            {rows.length > limit && <button onClick={() => setLimit(limit + PAGE_ROWS)}>Tampilkan {Math.min(PAGE_ROWS, rows.length - limit)} lagi</button>}
+            <span className="mut">Menampilkan {Math.min(limit, rows.length)} dari {rows.length} baris. Pilih semua, filter, dan ekspor mencakup semuanya.</span>
           </div>
-          {rows.length > MAX_ROWS && <div className="mut">Menampilkan {MAX_ROWS} dari {rows.length} baris. Ekspor mencakup semuanya.</div>}
         </section>
       )}
     </div>

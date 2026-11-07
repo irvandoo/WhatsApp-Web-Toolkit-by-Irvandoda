@@ -3,6 +3,7 @@ import { resolveRange } from '../shared/analytics-logic';
 import type { RangeKey } from '../shared/analytics-types';
 import { buildReport, fmtIdr, reportToCsv } from '../shared/pos-logic';
 import { PAY_LABEL, type Order } from '../shared/pos-types';
+import { ScrollTable } from '../shared/ui/ScrollTable';
 import { download, toLocalInput } from './util';
 
 const TABS: [RangeKey, string][] = [['today', 'Hari ini'], ['week', 'Minggu'], ['month', 'Bulan'], ['year', 'Tahun'], ['all', 'Semua'], ['custom', 'Custom']];
@@ -48,15 +49,15 @@ export function Report({ orders }: { orders: Order[] }) {
       <div className="cols">
         <div>
           <h3>Produk teratas</h3>
-          <table><thead><tr><th>Produk</th><th className="r">Qty</th><th className="r">Omzet</th></tr></thead>
-            <tbody>{r.topProducts.map((p) => <tr key={p.key}><td>{p.name}</td><td className="r">{p.qty}</td><td className="r">{fmtIdr(p.revenue)}</td></tr>)}
-              {!r.topProducts.length && <tr><td colSpan={3} className="mut">Tidak ada data.</td></tr>}</tbody></table>
+          <ScrollTable maxHeight="40vh" label="Produk teratas"><table><thead><tr><th>Produk</th><th className="num">Qty</th><th className="num">Omzet</th></tr></thead>
+            <tbody>{r.topProducts.map((p) => <tr key={p.key}><td className="wrap">{p.name}</td><td className="num">{p.qty}</td><td className="num">{fmtIdr(p.revenue)}</td></tr>)}
+              {!r.topProducts.length && <tr><td colSpan={3} className="mut">Tidak ada data.</td></tr>}</tbody></table></ScrollTable>
         </div>
         <div>
           <h3>Pelanggan teratas</h3>
-          <table><thead><tr><th>Pelanggan</th><th className="r">Order</th><th className="r">Total</th></tr></thead>
-            <tbody>{r.topCustomers.map((c) => <tr key={c.key}><td>{c.name}</td><td className="r">{c.orders}</td><td className="r">{fmtIdr(c.total)}</td></tr>)}
-              {!r.topCustomers.length && <tr><td colSpan={3} className="mut">Tidak ada data.</td></tr>}</tbody></table>
+          <ScrollTable maxHeight="40vh" label="Pelanggan teratas"><table><thead><tr><th>Pelanggan</th><th className="num">Order</th><th className="num">Total</th></tr></thead>
+            <tbody>{r.topCustomers.map((c) => <tr key={c.key}><td className="wrap">{c.name}</td><td className="num">{c.orders}</td><td className="num">{fmtIdr(c.total)}</td></tr>)}
+              {!r.topCustomers.length && <tr><td colSpan={3} className="mut">Tidak ada data.</td></tr>}</tbody></table></ScrollTable>
         </div>
         <div>
           <h3>Metode pembayaran</h3>

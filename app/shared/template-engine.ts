@@ -1,6 +1,8 @@
 /** Pure template engine: {vars} + spintax {a|b|c}. */
 export const KNOWN_VARS = ['nama', 'telepon', 'tahap', 'tanggal', 'akun'] as const;
-export type TplVars = Partial<Record<(typeof KNOWN_VARS)[number], string>>;
+/** Extra variables only meaningful for group auto-replies ({pengirim} also works in personal chats = contact name). */
+export const GROUP_VARS = ['pengirim', 'grup'] as const;
+export type TplVars = Partial<Record<(typeof KNOWN_VARS)[number] | (typeof GROUP_VARS)[number], string>>;
 
 const SHORTCUT_RE = /^[a-z0-9_-]{1,24}$/;
 export function validateShortcut(s: string): boolean { return SHORTCUT_RE.test(s); }

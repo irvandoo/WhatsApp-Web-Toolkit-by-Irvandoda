@@ -12,6 +12,7 @@ import { handleAr, isArMsg } from './autoreply';
 import { handleCounts, isCountsMsg } from './counts';
 import { handleGrp, isGrpMsg } from './groups';
 import { handlePos, isPosMsg } from './pos';
+import { handleRcp, isRcpMsg } from './recipients-relay';
 import { handleOutbox, isOutboxMsg, registerOutboxAlarms } from './outbox';
 import { handleLi, isLiMsg } from './leadintel';
 import { handlePresets, isPresetMsg } from './presets';
@@ -49,6 +50,7 @@ const MODULES: { is: (m: unknown) => boolean; handle: Handler }[] = [
   { is: isCountsMsg as (m: unknown) => boolean, handle: handleCounts as (m: never) => Promise<unknown> },
   { is: isGrpMsg as (m: unknown) => boolean, handle: handleGrp as Handler },
   { is: isPosMsg as (m: unknown) => boolean, handle: handlePos as Handler },
+  { is: isRcpMsg as (m: unknown) => boolean, handle: handleRcp as Handler },
   { is: isOutboxMsg as (m: unknown) => boolean, handle: handleOutbox as Handler },
   { is: isLiMsg as (m: unknown) => boolean, handle: handleLi as Handler },
   { is: isPresetMsg as (m: unknown) => boolean, handle: handlePresets as Handler },
@@ -63,7 +65,7 @@ chrome.runtime.onMessage.addListener((m: unknown, sender, sendResponse) => {
 
 chrome.runtime.onMessage.addListener((m: RuntimeMsg, sender, sendResponse) => {
   const kind = String((m as { kind?: string })?.kind);
-  if (sender.id !== chrome.runtime.id || /^(sess|crm|tpl|ui|track|slot|ar|grp|ob|pos|li|preset):/.test(kind)) return false;
+  if (sender.id !== chrome.runtime.id || /^(sess|crm|tpl|ui|track|slot|ar|grp|ob|pos|li|preset|rcp):/.test(kind)) return false;
   (async () => {
     switch (m.kind) {
       case 'archive:put':

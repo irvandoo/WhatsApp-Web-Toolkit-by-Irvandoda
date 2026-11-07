@@ -28,6 +28,7 @@ export function App() {
     <div className="wrap">
       <h1 className="noprint">Kasir (POS) - WhatsApp Web Toolkit by Irvandoda</h1>
       <nav className="noprint">{TABS.map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</nav>
+      <div className="main">
       {settingsLive && tab === 'kasir' && (
         <Cashier key={(editing?.id ?? 'new') + cashKey} products={products} contacts={contacts} settings={settings} editing={editing}
           onSaved={(o) => { resetCash(); setSelected(o.id); setTab('pesanan'); }} onCancel={resetCash} />
@@ -36,6 +37,7 @@ export function App() {
       {tab === 'katalog' && <Catalog products={products} />}
       {tab === 'laporan' && <Report orders={orders} />}
       {settingsLive && tab === 'pengaturan' && <Settings settings={settings} />}
+      </div>
     </div>
   );
 }

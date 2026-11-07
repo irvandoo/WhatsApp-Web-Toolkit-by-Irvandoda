@@ -9,6 +9,7 @@ import { mountTracker } from './tracker';
 import { mountSlotBinding } from './switcher';
 import { mountAutoReply } from './autoreply';
 import { mountGroupsBridge } from './groups-bridge';
+import { mountRecipientsBridge } from './recipients-bridge';
 import { mountPosBridge } from './pos-bridge';
 import { mountOutbox } from './outbox';
 
@@ -25,3 +26,4 @@ mountAutoReply();
 mountGroupsBridge();
 mountPosBridge();
 mountOutbox();
+mountRecipientsBridge();

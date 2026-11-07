@@ -1,11 +1,14 @@
 import { liveQuery } from 'dexie';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { IS_FULL } from '../shared/credit';
 import type { Contact, Reminder, Template } from '../shared/crm-types';
 import { db } from '../shared/db';
+import { ScrollTable } from '../shared/ui/ScrollTable';
+import { PhoneField } from './PhoneField';
+import { RecipientPicker, type PickerResult } from './RecipientPicker';
 import {
-  DEFAULT_SAFETY, WARMUP_CAPS, autoSentTimes, countByStatus, describeDuration, logToCsv, mergeRecipients, normalizeSafety, optOutPhoneSet,
-  parseRecipients, planCampaign, recipientsFromContacts, recipientsTemplateCsv, renderMessage,
+  DEFAULT_SAFETY, WARMUP_CAPS, autoSentTimes, countByStatus, describeDuration, logToCsv, normalizeSafety, optOutPhoneSet,
+  planCampaign, renderMessage,
 } from '../shared/outbox-logic';
 import type {
   Campaign, CampaignSource, ObMsg, OutboxItem, Recipient, Recurrence, SafetySettings, Schedule, SendLogEntry,
@@ -84,11 +87,46 @@ export function App() {
       <nav role="tablist" aria-label="Menu blast">
         {tabs.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}
       </nav>
-      {tab === 'kampanye' && <Wizard onStarted={() => setTab('berjalan')} />}
-      {tab === 'berjalan' && <Running campaigns={campaigns} />}
-      {tab === 'jadwal' && <Schedules />}
-      {tab === 'pengingat' && <Reminders />}
-      {tab === 'log' && <LogTab campaigns={campaigns} />}
+      <div className={`main${tab === 'kampanye' ? ' wizmain' : ''}`}>
+        {tab === 'kampanye' && <Wizard onStarted={() => setTab('berjalan')} />}
+        {tab === 'berjalan' && <Running campaigns={campaigns} />}
+        {tab === 'jadwal' && <Schedules />}
+        {tab === 'pengingat' && <Reminders />}
+        {tab === 'log' && <LogTab campaigns={campaigns} />}
+      </div>
+    </div>
+  );
+}
+
+const PAGE = 200;
+function MoreBtn({ shown, total, onMore }: { shown: number; total: number; onMore: () => void }) {
+  return (
+    <div className="row" style={{ marginTop: 6 }}>
+      <button onClick={onMore}>Tampilkan {Math.min(PAGE, total - shown)} lagi</button>
+      <span className="mut">Menampilkan {Math.min(shown, total)} dari {total}</span>
+    </div>
+  );
+}
+
+function RecipientPreview({ list }: { list: Recipient[] }) {
+  const [n, setN] = useState(PAGE);
+  const cols = useMemo(() => {
+    const keys: string[] = [];
+    for (const r of list.slice(0, 50)) for (const k of Object.keys(r.vars ?? {})) if (!keys.includes(k)) keys.push(k);
+    return keys.slice(0, 8);
+  }, [list]);
+  if (!list.length) return null;
+  return (
+    <div style={{ marginTop: 6 }}>
+      <ScrollTable maxHeight="40vh" stickyFirst label="Pratinjau penerima">
+        <table>
+          <thead><tr><th className="num">#</th><th>Telepon</th><th>Nama</th>{cols.map((c) => <th key={c}>{c}</th>)}</tr></thead>
+          <tbody>{list.slice(0, n).map((r, i) => (
+            <tr key={r.phone}><td className="num">{i + 1}</td><td>{r.phone}</td><td>{r.name ?? '-'}</td>{cols.map((c) => <td key={c}>{r.vars?.[c] ?? ''}</td>)}</tr>
+          ))}</tbody>
+        </table>
+      </ScrollTable>
+      {list.length > n && <MoreBtn shown={n} total={list.length} onMore={() => setN(n + PAGE)} />}
     </div>
   );
 }
@@ -116,10 +154,8 @@ function SafetyForm({ s, set }: { s: SafetySettings; set: (v: SafetySettings) =>
 function Wizard({ onStarted }: { onStarted: () => void }) {
   const [step, setStep] = useState(1);
   const [name, setName] = useState('');
-  const [csv, setCsv] = useState('');
-  const [crmOn, setCrmOn] = useState(false);
-  const [stage, setStage] = useState('');
-  const [tag, setTag] = useState('');
+  const [picked, setPicked] = useState<PickerResult>({ recipients: [], source: 'csv', unique: 0 });
+  const [pickKey, setPickKey] = useState(0);
   const [body, setBody] = useState('');
   const [safety, setSafety] = useState<SafetySettings>(DEFAULT_SAFETY);
   const [optIn, setOptIn] = useState(false);
@@ -128,21 +164,15 @@ function Wizard({ onStarted }: { onStarted: () => void }) {
   const [seed, setSeed] = useState(0);
   const [busy, setBusy] = useState(false);
   const [errs, setErrs] = useState<string[]>([]);
-  const file = useRef<HTMLInputElement>(null);
 
   const contacts = useLive(() => db.contacts.toArray(), [] as Contact[]);
   const templates = useLive(() => db.templates.toArray(), [] as Template[]);
-  const stages = useLive(async () => (await db.pipeline.get('default'))?.stages ?? [], [] as string[]);
   const recent = useLive(() => db.sendLog.where('ts').aboveOrEqual(Date.now() - 2 * 86_400_000).toArray(), [] as SendLogEntry[]);
   const earliest = useLive(async () => (await db.sendLog.orderBy('ts').filter((e) => e.status === 'sent' && e.mode === 'auto').first())?.ts ?? null, null as number | null);
-  const tags = useMemo(() => [...new Set(contacts.flatMap((c) => c.tags))].sort(), [contacts]);
 
-  const parsed = useMemo(() => parseRecipients(csv), [csv]);
-  const crm = useMemo(() => (crmOn ? recipientsFromContacts(contacts, { stage: stage || undefined, tag: tag || undefined }) : null), [crmOn, contacts, stage, tag]);
   const optOut = useMemo(() => optOutPhoneSet(contacts), [contacts]);
-  const merged = useMemo(() => mergeRecipients([parsed.recipients, crm?.recipients ?? []], optOut), [parsed, crm, optOut]);
-  const recipients: Recipient[] = merged.recipients;
-  const source: CampaignSource = csv.trim() && crmOn ? 'mix' : crmOn ? 'crm' : 'csv';
+  const recipients: Recipient[] = picked.recipients;
+  const source: CampaignSource = picked.source;
   const safe = useMemo(() => normalizeSafety(safety), [safety]);
   const startAt = later ? Math.max(Date.now(), new Date(startLocal).getTime() || Date.now()) : Date.now();
 
@@ -160,7 +190,6 @@ function Wizard({ onStarted }: { onStarted: () => void }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const prev = useMemo(() => renderMessage(body, sample, {}, Math.random), [body, sample.phone, seed]);
 
-  const onFile = async (f: File | undefined) => { if (f) setCsv(await f.text()); };
   const chooseTpl = (id: string) => { const t = templates.find((x) => x.id === id); if (t) setBody(t.body); };
 
   const canNext = step === 1 ? recipients.length > 0 : step === 2 ? !!body.trim() : step === 3 ? optIn : true;
@@ -173,48 +202,27 @@ function Wizard({ onStarted }: { onStarted: () => void }) {
         input: { name: name.trim(), template: body, recipients, safety: safe, startAt, optInConfirmed: optIn, source },
       });
       if (!r?.ok) { setErrs(r?.errors ?? ['Gagal membuat kampanye.']); return; }
-      setStep(1); setName(''); setCsv(''); setBody(''); setOptIn(false); setCrmOn(false);
+      setStep(1); setName(''); setBody(''); setOptIn(false); setPickKey((k) => k + 1);
       onStarted();
     } catch (e) { setErrs([String(e)]); }
     finally { setBusy(false); }
   };
 
   return (
-    <section aria-label="Wizard kampanye">
+    <section aria-label="Wizard kampanye" className="wiz">
       <div className="steps" aria-label="Langkah">
         {['1 Penerima', '2 Pesan', '3 Pengaman', '4 Tinjau & mulai'].map((l, i) => <span key={l} className={step === i + 1 ? 'cur' : step > i + 1 ? 'done' : ''}>{l}</span>)}
       </div>
 
-      {step === 1 && (
+      <div className="wizbody">
+      <div hidden={step !== 1}>
         <div className="card">
           <h2>Penerima</h2>
-          <p className="mut">Tempel nomor (satu per baris) atau CSV dengan kolom <code>telepon,nama,...</code>. Kolom tambahan menjadi variabel, misal kolom <code>kota</code> dipakai sebagai <code>{'{kota}'}</code>. Nomor 08xx otomatis menjadi 628xx.</p>
-          <div className="row" style={{ marginBottom: 6 }}>
-            <button onClick={() => file.current?.click()}>Unggah file CSV</button>
-            <input ref={file} type="file" accept=".csv,text/csv,text/plain" hidden onChange={(e) => { void onFile(e.target.files?.[0]); e.target.value = ''; }} />
-            <button onClick={() => download('template-penerima.csv', recipientsTemplateCsv(), 'text/csv')}>Unduh template CSV</button>
-          </div>
-          <label className="f">Daftar penerima
-            <textarea rows={7} value={csv} onChange={(e) => setCsv(e.target.value)} placeholder={'telepon,nama,kota\n081234567890,Budi,Bandung'} />
-          </label>
-          <p aria-live="polite">{parsed.recipients.length} nomor valid{parsed.duplicates ? `, ${parsed.duplicates} duplikat dibuang` : ''}{parsed.invalid.length ? `, ` : ''}
-            {parsed.invalid.length > 0 && <span className="err">{parsed.invalid.length} baris tidak valid (baris {parsed.invalid.slice(0, 5).map((x) => x.line).join(', ')}{parsed.invalid.length > 5 ? ', ...' : ''})</span>}</p>
-          <label className="chk"><input type="checkbox" checked={crmOn} onChange={(e) => setCrmOn(e.target.checked)} /><span>Tambahkan dari CRM</span></label>
-          {crmOn && (
-            <div className="row" style={{ margin: '6px 0' }}>
-              <select aria-label="Filter tahap" value={stage} onChange={(e) => setStage(e.target.value)}>
-                <option value="">Semua tahap</option>{stages.map((s) => <option key={s}>{s}</option>)}
-              </select>
-              <select aria-label="Filter tag" value={tag} onChange={(e) => setTag(e.target.value)}>
-                <option value="">Semua tag</option>{tags.map((s) => <option key={s}>{s}</option>)}
-              </select>
-              <span className="mut" aria-live="polite">{crm?.recipients.length ?? 0} kontak
-                {crm && (crm.skipped.optOut || crm.skipped.group) ? ` (dilewati: ${crm.skipped.optOut} opt-out, ${crm.skipped.group} grup/tanpa nomor)` : ''}</span>
-            </div>
-          )}
-          <p><b>Total penerima unik: {recipients.length}</b>{merged.optedOut ? ` (${merged.optedOut} opt-out dibuang)` : ''}</p>
+          <p className="mut">Pilih sumber nomor: Manual, Label, Grup, CRM, atau CSV. Nomor otomatis diformat (misal <code>+62 857-4747-6308</code> menjadi <code>6285747476308</code>) dan duplikat dihapus otomatis.</p>
+          <RecipientPicker key={pickKey} onChange={setPicked} />
+          <p><b>Total penerima unik: {recipients.length}</b></p>
         </div>
-      )}
+      </div>
 
       {step === 2 && (
         <div className="card">
@@ -264,7 +272,9 @@ function Wizard({ onStarted }: { onStarted: () => void }) {
         </div>
       )}
 
-      <div className="row">
+      </div>
+
+      <div className="row wizfoot">
         <button disabled={step === 1} onClick={() => setStep(step - 1)}>Kembali</button>
         {step < 4
           ? <button className="pri" disabled={!canNext} onClick={() => setStep(step + 1)}>Lanjut</button>
@@ -278,6 +288,8 @@ function Wizard({ onStarted }: { onStarted: () => void }) {
 function Running({ campaigns }: { campaigns: Campaign[] }) {
   const items = useLive(() => db.outbox.toArray(), [] as OutboxItem[]);
   const [open, setOpen] = useState('');
+  const [limits, setLimits] = useState<Record<string, number>>({});
+  const shown = (id: string) => limits[id] ?? PAGE;
   const by = useMemo(() => {
     const m = new Map<string, OutboxItem[]>();
     for (const i of items) { const a = m.get(i.campaignId); if (a) a.push(i); else m.set(i.campaignId, [i]); }
@@ -314,13 +326,14 @@ function Running({ campaigns }: { campaigns: Campaign[] }) {
             </div>
             {c.pausedReason && c.status === 'paused' && <p className="err" role="status">{c.pausedReason}</p>}
             {open === c.id && (
-              <div className="scroll" style={{ marginTop: 8 }}>
+              <div style={{ marginTop: 8 }}>
+                <ScrollTable maxHeight="50vh" stickyFirst label="Status per penerima">
                 <table>
                   <thead><tr><th>Nomor</th><th>Nama</th><th>Status</th><th>Jadwal kirim</th><th>Keterangan</th><th /></tr></thead>
                   <tbody>
-                    {[...list].sort((a, b) => a.dueAt - b.dueAt).map((i) => (
+                    {[...list].sort((a, b) => a.dueAt - b.dueAt).slice(0, shown(c.id)).map((i) => (
                       <tr key={i.id}>
-                        <td>{i.phone}</td><td>{i.name ?? '-'}</td><td><Badge s={i.status} /></td><td>{fmt(i.dueAt)}</td><td className="err">{i.error ?? ''}</td>
+                        <td>{i.phone}</td><td>{i.name ?? '-'}</td><td><Badge s={i.status} /></td><td>{fmt(i.dueAt)}</td><td className="err wrap">{i.error ?? ''}</td>
                         <td>{i.status === 'draft' && <>
                           <button onClick={() => void navigator.clipboard?.writeText(i.text)}>Salin</button>{' '}
                           <button onClick={() => void send({ kind: 'ob:result', itemId: i.id, status: 'sent' })}>Tandai terkirim</button></>}</td>
@@ -328,6 +341,8 @@ function Running({ campaigns }: { campaigns: Campaign[] }) {
                     ))}
                   </tbody>
                 </table>
+                </ScrollTable>
+                {list.length > shown(c.id) && <MoreBtn shown={shown(c.id)} total={list.length} onMore={() => setLimits({ ...limits, [c.id]: shown(c.id) + PAGE })} />}
               </div>
             )}
           </div>
@@ -372,7 +387,7 @@ function Schedules() {
         <h2>{list.some((s) => s.id === f.id) ? 'Ubah jadwal' : 'Jadwal baru'}</h2>
         <div className="grid">
           <label className="f">Nama jadwal<input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
-          <label className="f">Nomor tujuan<input inputMode="tel" value={f.target.phone} onChange={(e) => setF({ ...f, target: { ...f.target, phone: e.target.value, contactKey: undefined } })} placeholder="0812xxxxxxx" /></label>
+          <label className="f">Nomor tujuan<PhoneField value={f.target.phone} onChange={(v) => setF({ ...f, target: { ...f.target, phone: v, contactKey: undefined } })} /></label>
           <label className="f">atau pilih kontak CRM
             <select value={f.target.contactKey ?? ''} onChange={(e) => pickContact(e.target.value)}>
               <option value="">-</option>{contacts.filter((c) => c.phone && !c.optOut).map((c) => <option key={c.key} value={c.key}>{c.name || c.phone} ({c.phone})</option>)}
@@ -409,7 +424,7 @@ function Schedules() {
       <div className="card">
         <h2>Daftar jadwal</h2>
         {!sorted.length ? <p className="mut">Belum ada jadwal.</p> : (
-          <div className="scroll"><table>
+          <ScrollTable maxHeight="50vh" label="Daftar jadwal"><table>
             <thead><tr><th>Aktif</th><th>Nama</th><th>Tujuan</th><th>Pengulangan</th><th>Berikutnya</th><th /></tr></thead>
             <tbody>{sorted.map((s) => (
               <tr key={s.id}>
@@ -418,7 +433,7 @@ function Schedules() {
                 <td><button onClick={() => { setF({ ...s }); setErrs([]); }}>Ubah</button>{' '}
                   <button className="bad" onClick={() => { if (confirm('Hapus jadwal ini?')) void send({ kind: 'ob:schedule:delete', id: s.id }); }}>Hapus</button></td>
               </tr>))}</tbody>
-          </table></div>
+          </table></ScrollTable>
         )}
       </div>
     </section>
@@ -479,16 +494,16 @@ function LogTab({ campaigns }: { campaigns: Campaign[] }) {
   const log = useLive(() => db.sendLog.orderBy('ts').reverse().limit(500).toArray(), [] as SendLogEntry[]);
   const names = useMemo(() => Object.fromEntries(campaigns.map((c) => [c.id, c.name])), [campaigns]);
   return (
-    <section className="card">
+    <section className="card fill">
       <div className="row" style={{ marginBottom: 8 }}>
         <h2 style={{ flex: 1, margin: 0 }}>Log pengiriman (500 terakhir)</h2>
         <button disabled={!log.length} onClick={() => download('log-pengiriman.csv', logToCsv(log, names), 'text/csv')}>Ekspor CSV</button>
       </div>
       {!log.length ? <p className="mut">Log kosong.</p> : (
-        <div className="scroll"><table>
+        <ScrollTable stickyFirst label="Log pengiriman"><table>
           <thead><tr><th>Waktu</th><th>Kampanye</th><th>Nomor</th><th>Status</th><th>Keterangan</th></tr></thead>
-          <tbody>{log.map((e) => <tr key={e.id}><td>{fmt(e.ts)}</td><td>{names[e.campaignId] ?? e.campaignId.slice(0, 8)}</td><td>{e.phone}</td><td><Badge s={e.status} /></td><td className="err">{e.error ?? ''}</td></tr>)}</tbody>
-        </table></div>
+          <tbody>{log.map((e) => <tr key={e.id}><td>{fmt(e.ts)}</td><td>{names[e.campaignId] ?? e.campaignId.slice(0, 8)}</td><td>{e.phone}</td><td><Badge s={e.status} /></td><td className="err wrap">{e.error ?? ''}</td></tr>)}</tbody>
+        </table></ScrollTable>
       )}
     </section>
   );
