@@ -1,3 +1,4 @@
+import { cleanPhone, isLidChat } from '../shared/crm-logic';
 import { db } from '../shared/db';
 import { mergeInteraction } from '../shared/analytics-logic';
 import type { Interaction, MsgEvent, TrackMsg } from '../shared/analytics-types';
@@ -53,4 +54,22 @@ export async function handleTrack(m: TrackMsg): Promise<unknown> {
     }
   });
   return { events: events.length, interactions: interactions.length };
+}
+
+/**
+ * Older versions stored the digits of `@lid` chat ids as the contact's phone number. Clear those once
+ * (flag in chrome.storage.local) so the UI never shows or uses a fake number.
+ */
+export async function fixLidPhones(): Promise<number> {
+  const FLAG = 'wwt-lidfix-v1';
+  try {
+    if ((await chrome.storage.local.get(FLAG))[FLAG]) return 0;
+    let n = 0;
+    const inter = await db.interactions.filter((r) => isLidChat(r.chatId) && cleanPhone(r.chatId, r.phone) !== String(r.phone ?? '').replace(/\D/g, '')).toArray();
+    for (const r of inter) { await db.interactions.update(r.key, { phone: '' }); n++; }
+    const cons = await db.contacts.filter((r) => isLidChat(r.chatId) && !!r.phone && cleanPhone(r.chatId, r.phone) === '').toArray();
+    for (const r of cons) { await db.contacts.update(r.key, { phone: '' }); n++; }
+    await chrome.storage.local.set({ [FLAG]: Date.now() });
+    return n;
+  } catch { return 0; }
 }

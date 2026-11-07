@@ -7,7 +7,7 @@ import { installUiOpen } from './ui-open';
 import { installRunStatus } from './runstatus';
 import { handleCrm, isCrmMsg, registerCrmAlarms } from './crm';
 import { handleTemplates, isTplMsg, seedTemplates } from './templates';
-import { handleTrack, isTrackMsg } from './track';
+import { fixLidPhones, handleTrack, isTrackMsg } from './track';
 import { handleSlots, isSlotMsg } from './slots';
 import { handleAr, isArMsg } from './autoreply';
 import { handleCounts, isCountsMsg } from './counts';
@@ -25,6 +25,7 @@ installSessions();
 installUiOpen();
 registerCrmAlarms();
 registerOutboxAlarms();
+void fixLidPhones();
 installRunStatus();
 
 chrome.runtime.onInstalled.addListener(() => {

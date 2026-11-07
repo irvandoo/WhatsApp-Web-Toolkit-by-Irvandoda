@@ -1,9 +1,23 @@
 import { DEFAULT_STAGES, MANUAL_ACCOUNT, type Contact } from './crm-types';
 
 /** Digits of the phone number for user chats; '' for groups/broadcast/unknown. */
+/**
+ * Real phone number of a chat id. `@lid` ids are WhatsApp's internal identifiers, NOT phone numbers, so they yield ''
+ * (using their digits as a number makes sends/deep links go to a stranger or fail with "isn't on WhatsApp").
+ */
 export function phoneFromChatId(chatId: string): string {
-  const m = /^(\d+)(?::\d+)?@(c\.us|s\.whatsapp\.net|lid)$/.exec(chatId.trim());
+  const m = /^(\d+)(?::\d+)?@(c\.us|s\.whatsapp\.net)$/.exec(String(chatId).trim());
   return m ? m[1] : '';
+}
+
+export const isLidChat = (chatId: string): boolean => /@lid$/.test(String(chatId).trim());
+
+/** Drop a stored 'phone' that is really the digits of a LID chat id (written by older versions). */
+export function cleanPhone(chatId: string, phone: string | undefined): string {
+  const p = String(phone ?? '').replace(/\D/g, '');
+  if (!p) return '';
+  if (isLidChat(chatId) && chatId.split('@')[0].split(':')[0] === p) return '';
+  return p;
 }
 
 /** CSV cell with quoting and formula-injection guard. */

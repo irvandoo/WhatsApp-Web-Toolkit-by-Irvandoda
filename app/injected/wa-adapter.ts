@@ -505,28 +505,58 @@ async function sendViaApi(chat: Any, text: string): Promise<{ method: string } |
 }
 
 const activeChat = (): Any => { try { return store.collections?.Chat?.getActive?.() ?? chatsColl().find((c) => c?.active); } catch { return undefined; } };
+const composerThere = (): boolean => !!document.querySelector('footer [contenteditable="true"]');
+/** Is `chat` the chat currently shown? Uses the collection's active chat when available, else the composer as a weak signal. */
+function isOpenNow(chat: Any): boolean {
+  const canVerify = typeof store.collections?.Chat?.getActive === 'function';
+  if (canVerify) { const a = activeChat(); return !!a && wid(a.id) === wid(chat?.id); }
+  return composerThere();
+}
+function fire(el: HTMLElement): void {
+  for (const t of ['mousedown', 'mouseup', 'click']) el.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window }));
+}
+/** Last resort without reloading: click the chat's row in the (visible part of the) chat list. */
+async function openViaList(chat: Any): Promise<boolean> {
+  try {
+    const name = String(chat?.formattedTitle ?? chat?.name ?? '').trim();
+    if (!name) return false;
+    const hit = [...document.querySelectorAll<HTMLElement>('#pane-side span[title]')].find((s) => s.title === name);
+    const row = hit?.closest<HTMLElement>('[role="listitem"],[role="row"],[data-testid="cell-frame-container"]') ?? hit;
+    if (!row) return false;
+    fire(row);
+    for (let i = 0; i < 14; i++) { if (isOpenNow(chat)) return true; await sleepMs(150); }
+  } catch { /* ignore */ }
+  return false;
+}
 async function openChat(chat: Any): Promise<boolean> {
   try {
     const cmd = req('WAWebCmd');
     const host = cmd?.Cmd ?? cmd;
-    const fn = host?.openChatBottom ?? host?.openChatAt;
-    if (typeof fn !== 'function') return false;
-    await fn.call(host, chat);
-    for (let i = 0; i < 20; i++) { if (document.querySelector('footer [contenteditable="true"]')) return true; await sleepMs(150); }
+    const fns = ['openChatBottom', 'openChatAt'].map((n) => host?.[n]).filter((f) => typeof f === 'function') as Array<(...a: unknown[]) => unknown>;
+    // WhatsApp changed several helpers from (chat) to ({chat}); try both shapes.
+    for (const fn of fns) {
+      for (const arg of [chat, { chat }]) {
+        try { await fn.call(host, arg); } catch { continue; }
+        for (let i = 0; i < 14; i++) { if (isOpenNow(chat)) return true; await sleepMs(150); }
+      }
+    }
   } catch { /* ignore */ }
-  return false;
+  return openViaList(chat);
 }
 /**
  * Open a chat room (what the user does by clicking it in the chat list).
  * 1) WhatsApp's own command (no reload). 2) Deep link `/send?phone=` (reloads the page) only when a real phone number is known.
  */
 async function openChatById(chatId: string, phone?: string): Promise<{ ok: boolean; method?: string; error?: string }> {
+  const isLid = /@lid$/.test(chatId);
   let chat = findChat(chatId);
   if (!chat) { try { chat = await resolveChat(chatId); } catch { /* not resolvable */ } }
-  const d = digits(phone ?? (/@c\.us$/.test(chatId) ? chatId.split('@')[0] : ''));
+  // A real phone number is only trusted for c.us ids or an explicitly given number; LID digits are NOT a phone number.
+  const d = isLid ? '' : digits(phone ?? (/@c\.us$/.test(chatId) ? chatId.split('@')[0] : ''));
   if (!chat && d.length >= 8) { try { chat = await resolveChat(`${d}@c.us`); } catch { /* ignore */ } }
   if (chat && (await openChat(chat))) return { ok: true, method: 'WAWebCmd' };
-  if (d.length >= 8) { location.assign(`https://web.whatsapp.com/send?phone=${d}`); return { ok: true, method: 'deep-link' }; }
+  // Reloading the page via a deep link is the last resort and only for a chat that does not exist yet (new number).
+  if (!chat && d.length >= 8) { location.assign(`https://web.whatsapp.com/send?phone=${d}`); return { ok: true, method: 'deep-link' }; }
   return { ok: false, error: chat ? 'open-failed' : 'chat-not-found' };
 }
 
