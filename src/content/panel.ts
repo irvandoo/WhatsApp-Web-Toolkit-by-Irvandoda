@@ -87,7 +87,7 @@ export function mountPanel(): void {
       if (!id) return say('Akun belum terdeteksi.');
       say('Menyimpan sesi (EKSPERIMENTAL)…');
       const r = await saveSession(id, new Date().toLocaleString());
-      say(r.ok ?  : );
+      say(r.ok ? `Sesi tersimpan (${Math.round(r.bytes / 1024)} KB).` : `Gagal (${r.reason}): ${r.details.slice(0, 5).join(', ')}${r.details.length > 5 ? ' …' : ''}`);
     } catch (e) { say(String(e)); }
   });
   rs.addEventListener('click', async () => {
@@ -96,7 +96,7 @@ export function mountPanel(): void {
       const list = (await chrome.runtime.sendMessage({ kind: 'session:list', accountId: id ?? undefined } satisfies RuntimeMsg)) as SessionMeta[];
       const last = Array.isArray(list) ? list.sort((a, b) => b.createdAt - a.createdAt)[0] : undefined;
       if (!last) return say('Belum ada sesi tersimpan untuk akun ini.');
-      if (!confirm()) return;
+      if (!confirm(`EKSPERIMENTAL: ini menghapus semua data penyimpanan WhatsApp Web saat ini dan menggantinya dengan sesi "${last.label}". Lanjutkan?`)) return;
       await restoreSession(last.id, { confirm: true });
     } catch (e) { say(String(e)); }
   });

@@ -16,6 +16,8 @@ function Popup() {
       </div>
       <div className="row">
         <button className="primary" onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('src/dashboard/index.html') })}>{t.openHub}</button>
+        <button onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('src/crm/index.html') })}>CRM</button>
+        <button onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('src/templates/index.html') })}>Template</button>
         <a href="https://web.whatsapp.com" target="_blank" rel="noreferrer">{t.openWA}</a>
       </div>
       <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>{CREDIT.nickname} - <a href={CREDIT.web} target="_blank" rel="noreferrer">irvandoda.web.id</a></p>

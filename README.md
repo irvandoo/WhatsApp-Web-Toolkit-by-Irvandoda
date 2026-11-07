@@ -63,10 +63,10 @@ POS (katalog, invoice), blast terjadwal dengan jeda aman, ekstrak anggota grup (
 | Memori (CSS-level) | ✅ Diimplementasi, belum diukur |
 | Adapter WA (MAIN world) | 🟡 Diimplementasi, **belum diuji di WA nyata** |
 | Sync Center + arsip lokal | 🟡 Diimplementasi, belum diuji |
-| Multi-akun, grup, Hub | 🟡 Dalam pengerjaan |
+| Multi-akun, grup, Hub | 🟡 Terpasang, belum diuji di browser |
 | Snapshot sesi | 🧪 Eksperimental, kemungkinan tidak didukung |
-| CRM | 🟡 Dalam pengerjaan |
-| Template / quick reply | 🟡 Dalam pengerjaan |
+| CRM | 🟡 Terpasang, belum diuji di browser |
+| Template / quick reply | 🟡 Terpasang, belum diuji di browser |
 | POS, Blast, Ekstrak grup, Analitik | ⏳ Belum dimulai |
 
 ---
@@ -187,9 +187,10 @@ Gunakan hanya untuk kontak yang **telah memberi persetujuan (opt-in)** dan horma
 - [x] Scaffold, dua build, kredit
 - [x] Adapter WA + Sync Center + arsip lokal (perlu uji nyata)
 - [x] Optimasi memori dasar
-- [ ] Multi-akun, grup, Hub (dalam pengerjaan)
-- [ ] CRM & template (dalam pengerjaan)
-- [ ] Integrasi manifest, ikon final, i18n lengkap
+- [x] Multi-akun, grup, Hub (terpasang, perlu uji nyata)
+- [x] CRM & template (terpasang, perlu uji nyata)
+- [x] Integrasi manifest
+- [ ] Ikon final, i18n lengkap
 - [ ] POS: katalog, keranjang, invoice
 - [ ] Blast terjadwal opt-in + batas harian (build `full`)
 - [ ] Ekstrak anggota grup (build `full`)

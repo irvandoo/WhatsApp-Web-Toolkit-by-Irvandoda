@@ -3,13 +3,28 @@ import { db } from '../shared/db';
 import type { RuntimeMsg } from '../shared/messages';
 import { handleAccounts, NOT_HANDLED } from './accounts';
 import { installSessions } from './sessions';
+import { handleCrm, isCrmMsg, registerCrmAlarms } from './crm';
+import { handleTemplates, isTplMsg, seedTemplates } from './templates';
+import type { CrmMsg } from '../shared/crm-types';
 
 installSessions();
+registerCrmAlarms();
 
-chrome.runtime.onInstalled.addListener(() => console.info(`${CREDIT.product} installed — ${CREDIT.web}`));
+chrome.runtime.onInstalled.addListener(() => {
+  console.info(`${CREDIT.product} installed — ${CREDIT.web}`);
+  void seedTemplates();
+});
+
+// CRM + template messages (separate listener so the main one never answers them).
+chrome.runtime.onMessage.addListener((m: CrmMsg, sender, sendResponse) => {
+  if (sender.id !== chrome.runtime.id || !(isCrmMsg(m) || isTplMsg(m))) return false;
+  (isTplMsg(m) ? handleTemplates(m) : handleCrm(m)).then(sendResponse, (e) => sendResponse({ error: String(e) }));
+  return true;
+});
 
 chrome.runtime.onMessage.addListener((m: RuntimeMsg, sender, sendResponse) => {
-  if (sender.id !== chrome.runtime.id || String((m as { kind?: string })?.kind).startsWith('sess:')) return false;
+  const kind = String((m as { kind?: string })?.kind);
+  if (sender.id !== chrome.runtime.id || /^(sess|crm|tpl):/.test(kind)) return false;
   (async () => {
     switch (m.kind) {
       case 'archive:put':
