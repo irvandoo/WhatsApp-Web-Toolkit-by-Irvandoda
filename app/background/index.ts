@@ -7,11 +7,20 @@ import { installUiOpen } from './ui-open';
 import { handleCrm, isCrmMsg, registerCrmAlarms } from './crm';
 import { handleTemplates, isTplMsg, seedTemplates } from './templates';
 import { handleTrack, isTrackMsg } from './track';
+import { handleSlots, isSlotMsg } from './slots';
+import { handleAr, isArMsg } from './autoreply';
+import { handleCounts, isCountsMsg } from './counts';
+import { handleGrp, isGrpMsg } from './groups';
+import { handlePos, isPosMsg } from './pos';
+import { handleOutbox, isOutboxMsg, registerOutboxAlarms } from './outbox';
+import { handleLi, isLiMsg } from './leadintel';
+import { handlePresets, isPresetMsg } from './presets';
 import type { CrmMsg } from '../shared/crm-types';
 
 installSessions();
 installUiOpen();
 registerCrmAlarms();
+registerOutboxAlarms();
 
 chrome.runtime.onInstalled.addListener(() => {
   console.info(`${CREDIT.product} installed — ${CREDIT.web}`);
@@ -32,9 +41,29 @@ chrome.runtime.onMessage.addListener((m: unknown, sender, sendResponse) => {
   return true;
 });
 
+// Feature modules that own their own message kinds (one shared router).
+type Handler = (m: never, sender: chrome.runtime.MessageSender) => Promise<unknown>;
+const MODULES: { is: (m: unknown) => boolean; handle: Handler }[] = [
+  { is: isSlotMsg as (m: unknown) => boolean, handle: handleSlots as (m: never) => Promise<unknown> },
+  { is: isArMsg as (m: unknown) => boolean, handle: handleAr as (m: never) => Promise<unknown> },
+  { is: isCountsMsg as (m: unknown) => boolean, handle: handleCounts as (m: never) => Promise<unknown> },
+  { is: isGrpMsg as (m: unknown) => boolean, handle: handleGrp as Handler },
+  { is: isPosMsg as (m: unknown) => boolean, handle: handlePos as Handler },
+  { is: isOutboxMsg as (m: unknown) => boolean, handle: handleOutbox as Handler },
+  { is: isLiMsg as (m: unknown) => boolean, handle: handleLi as Handler },
+  { is: isPresetMsg as (m: unknown) => boolean, handle: handlePresets as Handler },
+];
+chrome.runtime.onMessage.addListener((m: unknown, sender, sendResponse) => {
+  if (sender.id !== chrome.runtime.id) return false;
+  const mod = MODULES.find((x) => x.is(m));
+  if (!mod) return false;
+  mod.handle(m as never, sender).then(sendResponse, (e) => sendResponse({ error: String(e) }));
+  return true;
+});
+
 chrome.runtime.onMessage.addListener((m: RuntimeMsg, sender, sendResponse) => {
   const kind = String((m as { kind?: string })?.kind);
-  if (sender.id !== chrome.runtime.id || /^(sess|crm|tpl|ui|track):/.test(kind)) return false;
+  if (sender.id !== chrome.runtime.id || /^(sess|crm|tpl|ui|track|slot|ar|grp|ob|pos|li|preset):/.test(kind)) return false;
   (async () => {
     switch (m.kind) {
       case 'archive:put':

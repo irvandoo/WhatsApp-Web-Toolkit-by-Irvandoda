@@ -61,3 +61,7 @@ td.num,th.num{text-align:right}
 .hm .lb{aspect-ratio:auto;color:var(--muted);display:flex;align-items:center}
 .hm .c{background:rgb(var(--hm))}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+.t-hot{color:var(--p-urgent)}.t-warm{color:var(--p-high)}.t-cold{color:var(--p-normal)}.t-dormant{color:var(--p-low)}
+.eng{display:inline-block;width:60px;height:6px;background:var(--bd);border-radius:3px;vertical-align:middle;margin-right:6px;overflow:hidden}
+.eng>i{display:block;height:100%;background:var(--pri)}

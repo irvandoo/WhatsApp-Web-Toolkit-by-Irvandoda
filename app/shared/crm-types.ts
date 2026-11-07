@@ -27,6 +27,9 @@ export interface Template {
   category: string;
   usageCount: number;
   updatedAt: number;
+  /** extra message variants (body is variant #1); max 10, each <= 4000 chars */
+  variants?: string[];
+  rotation?: 'random' | 'round-robin' | 'shuffle-bag';
 }
 
 export type CrmMsg =

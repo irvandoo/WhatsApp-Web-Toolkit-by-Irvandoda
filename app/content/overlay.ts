@@ -1,12 +1,17 @@
 /** In-page modal overlay (closed shadow DOM) that frames extension pages over WhatsApp Web. */
-export type OverlayPage = 'dashboard' | 'crm' | 'templates' | 'analytics';
+export type OverlayPage = 'dashboard' | 'crm' | 'templates' | 'analytics' | 'autoreply' | 'blast' | 'pos' | 'groups' | 'presets';
 const PAGES: { id: OverlayPage; label: string; d: string }[] = [
   { id: 'dashboard', label: 'Hub Akun', d: '<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>' },
   { id: 'crm', label: 'CRM', d: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.5 3.2-5.5 6.5-5.5s5.9 2 6.5 5.5M17 11a3 3 0 1 0 0-6M18.5 14.7c1.8.6 3 2.3 3.3 5"/>' },
   { id: 'templates', label: 'Template', d: '<path d="M5 4h14a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-5 4V5a1 1 0 0 1 1-1z"/><path d="M8 9h8M8 12h5"/>' },
+  { id: 'autoreply', label: 'Auto-reply', d: '<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/>' },
+  { id: 'blast', label: 'Blast & Jadwal', d: '<path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1Z"/><path d="M15 9a4 4 0 0 1 0 6M18 7a7 7 0 0 1 0 10"/>' },
+  { id: 'pos', label: 'POS', d: '<path d="M3 4h2l2.4 11h10.2l2-8H6.2"/><circle cx="9" cy="20" r="1.2"/><circle cx="17" cy="20" r="1.2"/>' },
+  { id: 'groups', label: 'Ekstrak Grup', d: '<circle cx="8" cy="8" r="3"/><path d="M2 20c.5-3 2.7-5 6-5s5.5 2 6 5M16 11a3 3 0 1 0 0-6M17 15c2.3.3 4 2 4.5 5"/>' },
+  { id: 'presets', label: 'Preset Industri', d: '<path d="M12 3l2.1 5.4L20 10l-5.9 1.6L12 17l-2.1-5.4L4 10l5.9-1.6L12 3Z"/>' },
   { id: 'analytics', label: 'Analitik', d: '<path d="M4 20V4M4 20h16"/><path d="M8 16v-4M12 16V8M16 16v-6"/>' },
 ];
-const TITLES: Record<OverlayPage, string> = { dashboard: 'Hub Akun', crm: 'CRM', templates: 'Template', analytics: 'Analitik' };
+const TITLES: Record<OverlayPage, string> = { dashboard: 'Hub Akun', crm: 'CRM', templates: 'Template', analytics: 'Analitik', autoreply: 'Auto-reply', blast: 'Blast & Jadwal', pos: 'POS', groups: 'Ekstrak Grup', presets: 'Preset Industri' };
 const LOAD_TIMEOUT = 5000;
 
 const CSS = `
@@ -63,7 +68,7 @@ const isDark = () => document.body?.classList.contains('dark') || document.docum
   (!!window.matchMedia?.('(prefers-color-scheme: dark)').matches && !document.body?.classList.contains('light'));
 const reduced = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
-function load(s: State, page: OverlayPage): void {
+function load(s: State, page: OverlayPage, hash?: string): void {
   s.page = page;
   const { el } = s;
   el.title.textContent = TITLES[page];
@@ -75,16 +80,17 @@ function load(s: State, page: OverlayPage): void {
     window.clearTimeout(s.timer);
     el.sk.hidden = true; el.fb.hidden = true; el.frame.classList.remove('h');
   };
-  try { el.frame.src = chrome.runtime.getURL(`${page}/index.html`); } catch { el.sk.hidden = true; el.fb.hidden = false; }
+  try { el.frame.src = chrome.runtime.getURL(`${page}/index.html`) + (hash ? `#${hash.replace(/^#/, '')}` : ''); } catch { el.sk.hidden = true; el.fb.hidden = false; }
 }
 
 function openTab(page: OverlayPage): void {
   try { if (alive()) void chrome.runtime.sendMessage({ kind: 'ui:open', page }); } catch { /* ignore */ }
 }
 
-export function openOverlay(page: OverlayPage): void {
+export function openOverlay(page: OverlayPage, hash?: string): void {
   if (!PAGES.some((p) => p.id === page)) return;
-  if (st) { load(st, page); return; }
+  if (hash && !/^#?[\w-]{1,32}$/.test(hash)) hash = undefined;
+  if (st) { load(st, page, hash); return; }
   const host = document.createElement('div');
   host.id = 'wwt-overlay';
   const root = host.attachShadow({ mode: 'closed' });
@@ -129,7 +135,7 @@ export function openOverlay(page: OverlayPage): void {
   document.addEventListener('keydown', s.onKey, true);
   document.documentElement.appendChild(host);
   st = s;
-  load(s, page);
+  load(s, page, hash);
   if (reduced()) bd.classList.add('in'); else requestAnimationFrame(() => bd.classList.add('in'));
   s.el.close.focus();
 }

@@ -1,6 +1,7 @@
 import type { Contact, Template } from '../shared/crm-types';
 import type { ChatInfo } from '../shared/messages';
-import { render, type TplVars } from '../shared/template-engine';
+import { type TplVars } from '../shared/template-engine';
+import { ROT_KEY, renderWithRotation, sanitizeRotStore } from '../shared/rotation';
 import { listChats } from './sync';
 
 const SEL = ['footer [contenteditable="true"][role="textbox"]', '#main footer div[contenteditable="true"]'];
@@ -134,7 +135,11 @@ async function pick(t: Template) {
   hide();
   if (!c || !alive()) return;
   const vars = await buildVars();
-  insertText(c, render(t.body, vars));
+  let store = sanitizeRotStore(undefined);
+  try { store = sanitizeRotStore((await chrome.storage.local.get(ROT_KEY))[ROT_KEY]); } catch { /* ignore */ }
+  const r = renderWithRotation(t, vars, store[t.id]);
+  if (t.variants?.some((v) => v.trim())) { store[t.id] = r.state; try { await chrome.storage.local.set({ [ROT_KEY]: store }); } catch { /* ignore */ } }
+  insertText(c, r.text);
   try { await chrome.runtime.sendMessage({ kind: 'tpl:use', id: t.id }); } catch { /* ignore */ }
 }
 

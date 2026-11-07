@@ -15,12 +15,20 @@ export interface ArchivedMsg {
 }
 
 export type BridgeRequest =
+  | { id: string; type: 'groups:list' }
+  | { id: string; type: 'groups:members'; groupId: string }
   | { id: string; type: 'ping' }
   | { id: string; type: 'chats:list' }
   | { id: string; type: 'chat:messages'; chatId: string }
   | { id: string; type: 'sync:loadEarlier'; chatId: string }
   | { id: string; type: 'memory:trim'; keepChatId?: string }
-  | { id: string; type: 'activity:scan' };
+  | { id: string; type: 'activity:scan' }
+  | { id: string; type: 'inbox:poll'; sinceTs: number }
+  | { id: string; type: 'send:text'; chatId: string; text: string }
+  | { id: string; type: 'check:registered'; phones: string[] };
+
+/** check:registered result per phone: registered null = unknown (WA internals unavailable). */
+export interface RegisteredResult { phone: string; registered: boolean | null; chatId?: string }
 
 /** activity:scan result: per-chat message activity without bodies. */
 export interface ActivityEvent { id: string; ts: number; fromMe: boolean }
@@ -64,3 +72,13 @@ export type RuntimeMsg =
   | { kind: 'archive:put'; msgs: ArchivedMsg[] }
   | { kind: 'archive:stats'; accountId: string }
   | { kind: 'archive:export'; accountId: string; chatId?: string };
+
+/** Group member extraction (groups:list / groups:members adapter ops). */
+export interface GroupInfo { id: string; name: string; size: number; isAdmin: boolean; creationTs?: number }
+export interface GroupMember { id: string; phone: string | null; name: string; isAdmin: boolean; isSuperAdmin: boolean; isMe: boolean }
+export type GroupsUnavailable = { unavailable: true; reason?: string };
+export type GroupsListResult = GroupsUnavailable | { unavailable?: false; accountId: string | null; groups: GroupInfo[] };
+export type GroupMembersResult = GroupsUnavailable | { unavailable?: false; groupId: string; members: GroupMember[]; truncated: boolean };
+/** groups page -> background -> content (grp:exec) */
+export type GrpMsg = { kind: 'grp:call'; op: 'list' } | { kind: 'grp:call'; op: 'members'; groupId: string };
+export type GrpExec = { kind: 'grp:exec'; op: 'list' } | { kind: 'grp:exec'; op: 'members'; groupId: string };

@@ -6,7 +6,9 @@ import type { Account, RuntimeMsg, SessionMeta } from '../shared/messages';
 import { listChats, ping, syncAll, syncChat, type SyncProgress } from './sync';
 import { icon } from './panel-icons';
 import { PANEL_CSS } from './panel-style';
-import { mountNavButton } from './nav-button';
+import { DOCK_DEFS, TOGGLEABLE, loadDockPrefs, mountDock, saveDockPrefs, type DockView } from './dock';
+import { getBlurState, onBlurState, setBlur } from './privacy-blur';
+import { BLUR_MAX, BLUR_MIN, type BlurOptions } from '../shared/blur-logic';
 import { mountOverlayListener, openOverlay, type OverlayPage } from './overlay';
 
 type Props = Record<string, string>;
@@ -32,6 +34,48 @@ const send = async <T,>(m: RuntimeMsg): Promise<T | undefined> => {
   try { if (!alive()) return undefined; return (await chrome.runtime.sendMessage(m)) as T; } catch { return undefined; }
 };
 
+/** Privacy Blur options (chrome.storage 'wwt-blur' via privacy-blur.ts). Hotkey: Ctrl+Shift+B. */
+function buildBlurCard(): HTMLElement {
+  const card = h('div', { class: 'card' }, h('b', {}, 'Privacy Blur (penyamaran layar)'),
+    h('p', {}, 'Mengaburkan layar saat bekerja di tempat umum. Pintasan: Ctrl+Shift+B. Arahkan kursor ke bagian yang kabur untuk melihatnya.'));
+  const checks = new Map<string, HTMLInputElement>();
+  const chk = (id: string, label: string, get: (o: BlurOptions) => boolean, set: (v: boolean) => void) => {
+    const cb = h('input', { type: 'checkbox', id: `wwt-bl-${id}` });
+    cb.addEventListener('change', () => set(cb.checked));
+    checks.set(id, cb);
+    card.append(h('label', { class: 'chk', for: `wwt-bl-${id}` }, cb, label));
+    return () => { cb.checked = get(getBlurState().opts); };
+  };
+  const sync = [
+    chk('on', 'Aktifkan Privacy Blur', (o) => o.enabled, (v) => setBlur({ enabled: v })),
+    chk('list', 'Daftar chat', (o) => o.targets.chatList, (v) => setBlur({ targets: { chatList: v } })),
+    chk('msg', 'Pesan', (o) => o.targets.messages, (v) => setBlur({ targets: { messages: v } })),
+    chk('name', 'Nama kontak', (o) => o.targets.names, (v) => setBlur({ targets: { names: v } })),
+    chk('ava', 'Foto profil', (o) => o.targets.avatars, (v) => setBlur({ targets: { avatars: v } })),
+    chk('cmp', 'Kolom ketik pesan', (o) => o.targets.composer, (v) => setBlur({ targets: { composer: v } })),
+    chk('hov', 'Tampilkan jelas saat kursor di atasnya', (o) => o.revealOnHover, (v) => setBlur({ revealOnHover: v })),
+    chk('ina', 'Blur saat jendela tidak aktif', (o) => o.onInactive, (v) => setBlur({ onInactive: v })),
+    chk('idl', 'Blur otomatis setelah tidak ada aktivitas', (o) => o.autoOnIdle.enabled, (v) => setBlur({ autoOnIdle: { enabled: v } })),
+  ];
+  const range = h('input', { type: 'range', id: 'wwt-bl-int', min: String(BLUR_MIN), max: String(BLUR_MAX), step: '1' });
+  const rangeVal = h('span', {}, '');
+  range.addEventListener('input', () => { const n = Number(range.value); rangeVal.textContent = `${n}px`; setBlur({ intensity: n }); });
+  const mins = h('input', { type: 'number', id: 'wwt-bl-min', min: '1', max: '120', style: 'width:64px' });
+  mins.addEventListener('change', () => setBlur({ autoOnIdle: { minutes: Number(mins.value) } }));
+  card.append(
+    h('label', { class: 'kv', for: 'wwt-bl-int' }, h('span', {}, 'Tingkat blur'), rangeVal), range,
+    h('label', { class: 'kv', for: 'wwt-bl-min' }, h('span', {}, 'Menit tanpa aktivitas'), mins));
+  const paint = () => {
+    sync.forEach((f) => f());
+    const o = getBlurState().opts;
+    range.value = String(o.intensity); rangeVal.textContent = `${o.intensity}px`;
+    if (document.activeElement !== mins) mins.value = String(o.autoOnIdle.minutes);
+  };
+  paint();
+  onBlurState(paint);
+  return card;
+}
+
 export function mountPanel(): void {
   if (document.getElementById('wwt-panel')) return;
   mountOverlayListener();
@@ -56,7 +100,8 @@ export function mountPanel(): void {
   const main = h('main');
   const live = h('footer', { 'aria-live': 'polite' });
   const panel = h('div', { class: 'panel', role: 'dialog', 'aria-label': CREDIT.product }, header, nav, main, live);
-  wrap.append(fab, panel);
+  const dockEl = h('div', { class: 'dock', role: 'toolbar', 'aria-label': 'Modul', 'aria-orientation': 'vertical' });
+  wrap.append(dockEl, fab, panel);
   root.append(h('style', {}, PANEL_CSS), wrap);
   document.documentElement.appendChild(host);
 
@@ -88,7 +133,8 @@ export function mountPanel(): void {
   const secMem = h('section', {},
     h('div', { class: 'card' }, heapKv.row, h('div', { class: 'bar', role: 'img', 'aria-label': 'Penggunaan JS heap' }, heapFill), saverKv.row),
     h('p', {}, 'Mode hemat mematikan animasi saat tab tersembunyi. Bersihkan memori memangkas pesan yang dimuat di chat yang tidak sedang dibuka.'),
-    h('div', { class: 'row' }, bTrim));
+    h('div', { class: 'row' }, bTrim),
+    buildBlurCard());
 
   // ---- Akun tab
   const accId = kv('ID akun', '-'), accName = kv('Nama', '-'), accUnread = kv('Belum dibaca', '-');
@@ -110,7 +156,27 @@ export function mountPanel(): void {
     b.addEventListener('click', () => { close(); openOverlay(page); });
     modRow.append(b);
   }
+  // dock visibility (chrome.storage.local 'wwt-dock'); the checkboxes follow storage changes.
+  const dockBox = h('div', { class: 'card' }, h('b', {}, 'Tampilkan dock di navbar'), h('p', {}, 'Pilih modul yang muncul langsung di bilah kiri WhatsApp.'));
+  const dockChecks = new Map<string, HTMLInputElement>();
+  for (const d of TOGGLEABLE) {
+    const cb = h('input', { type: 'checkbox', id: `wwt-dk-${d.id}` });
+    cb.checked = true;
+    cb.addEventListener('change', () => {
+      const next: Record<string, boolean> = {};
+      dockChecks.forEach((c, id) => { next[id] = c.checked; });
+      void saveDockPrefs(next);
+    });
+    dockChecks.set(d.id, cb);
+    const lab = h('label', { class: 'chk', for: `wwt-dk-${d.id}` }, cb, d.label);
+    dockBox.append(lab);
+  }
+  const syncDockChecks = () => void loadDockPrefs().then((p) => dockChecks.forEach((c, id) => { c.checked = p[id] !== false; }));
+  syncDockChecks();
+  try { chrome.storage.onChanged.addListener((ch, area) => { if (area === 'local' && ch['wwt-dock']) syncDockChecks(); }); } catch { /* ignore */ }
+
   const secMod = h('section', {},
+    dockBox,
     h('h3', {}, 'CRM & Template'),
     h('div', { class: 'card' },
       h('p', {}, 'Template: ketik ', h('code', {}, '/kode'), ' di kolom pesan lalu pilih template. Variabel seperti nama akan diisi otomatis.'),
@@ -298,11 +364,49 @@ export function mountPanel(): void {
   if (document.body) new MutationObserver(applyTheme).observe(document.body, { attributes: true, attributeFilter: ['class'] });
 
   // ---- navbar entry (preferred) — the floating button is only a fallback
-  const navBtn = mountNavButton({
-    label: CREDIT.product,
-    onClick: () => { if (isOpen) close(); else open(); },
+  const navBtn = mountDock({
+    onToolkit: () => { if (isOpen) close(); else open(); },
     onPresence: (present) => wrap.classList.toggle('nav', present),
   });
+
+  // ---- fallback dock: compact vertical strip above the floating button (only when the navbar is missing)
+  const stripBtns = new Map<string, { b: HTMLButtonElement; badge: HTMLElement; dot: HTMLElement }>();
+  for (const d of DOCK_DEFS) {
+    if (d.id === 'toolkit') continue;
+    const badge = h('span', { class: 'sb', hidden: '' });
+    const dot = h('span', { class: 'sd', hidden: '' });
+    const ic = icon('brand', 20); // replaced below by a stroked path
+    ic.innerHTML = '';
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d.iconPath);
+    path.setAttribute('fill', 'none'); path.setAttribute('stroke', 'currentColor'); path.setAttribute('stroke-width', '1.8');
+    path.setAttribute('stroke-linecap', 'round'); path.setAttribute('stroke-linejoin', 'round');
+    ic.setAttribute('viewBox', '0 0 24 24'); ic.removeAttribute('fill');
+    ic.appendChild(path);
+    const b = h('button', { class: 'dk', type: 'button', title: d.label, 'aria-label': d.label }, ic, badge, dot);
+    b.addEventListener('click', () => navBtn.views().find((v) => v.id === d.id)?.click(b));
+    dockEl.append(b);
+    stripBtns.set(d.id, { b, badge, dot });
+  }
+  const renderStrip = () => {
+    let shown = 0;
+    for (const v of navBtn.views() as DockView[]) {
+      const e = stripBtns.get(v.id);
+      if (!e) continue;
+      e.b.hidden = v.hidden;
+      if (!v.hidden) shown++;
+      const has = v.badge !== null && v.badge !== 0 && v.badge !== '';
+      e.badge.hidden = !has;
+      e.badge.textContent = has ? (typeof v.badge === 'number' && v.badge > 99 ? '99+' : String(v.badge)) : '';
+      e.badge.style.background = v.badgeColor ?? '';
+      e.dot.hidden = !v.dot;
+      e.dot.style.background = v.dotColor ?? '';
+      e.b.setAttribute('aria-label', has && typeof v.badge === 'number' ? `${v.label} (${v.badge})` : v.label);
+    }
+    dockCount = shown;
+    placeStrip();
+  };
+  navBtn.subscribe(renderStrip);
 
   // ---- open / close
   let timer: number | undefined;
@@ -313,7 +417,7 @@ export function mountPanel(): void {
     applyTheme();
     panel.classList.add('show');
     fab.setAttribute('aria-expanded', 'true');
-    navBtn.setPressed(true);
+    navBtn.setToolkitPressed(true);
     if (reduce()) panel.classList.add('in'); else requestAnimationFrame(() => panel.classList.add('in'));
     select(tab);
     timer = window.setInterval(() => { if (!alive()) return close(); void refresh(); }, 3000);
@@ -325,10 +429,10 @@ export function mountPanel(): void {
     timer = undefined;
     panel.classList.remove('in');
     fab.setAttribute('aria-expanded', 'false');
-    navBtn.setPressed(false);
+    navBtn.setToolkitPressed(false);
     const hide = () => { if (!isOpen) panel.classList.remove('show'); };
     if (reduce()) hide(); else setTimeout(hide, 170);
-    if (refocus) { if (navBtn.present()) navBtn.focus(); else fab.focus(); }
+    if (refocus) { if (navBtn.present()) navBtn.focusToolkit(); else fab.focus(); }
   }
   closeBtn.addEventListener('click', () => close(true));
   document.addEventListener('keydown', (e) => { if (isOpen && e.key === 'Escape') close(true); }, true);
@@ -339,8 +443,11 @@ export function mountPanel(): void {
   const clampY = (y: number) => Math.max(MARGIN, Math.min(window.innerHeight - SIZE - MARGIN, y));
   let fabY = Math.round(window.innerHeight * 0.4); // mid-right: never over the composer's send/voice button
   try { const v = parseFloat(localStorage.getItem(POS_KEY) ?? ''); if (Number.isFinite(v)) fabY = v; } catch { /* storage blocked */ }
-  const place = () => { fabY = clampY(fabY); fab.style.top = `${fabY}px`; };
+  let dockCount = 0;
+  const placeStrip = () => { dockEl.style.top = `${Math.max(8, fabY - dockCount * 38 - 14)}px`; };
+  const place = () => { fabY = clampY(fabY); fab.style.top = `${fabY}px`; placeStrip(); };
   place();
+  renderStrip();
   window.addEventListener('resize', place);
   let startY = 0, startTop = 0, dragging = false, moved = false;
   fab.addEventListener('pointerdown', (e) => {
@@ -356,6 +463,7 @@ export function mountPanel(): void {
     fab.classList.add('drag');
     fabY = clampY(startTop + dy);
     fab.style.top = `${fabY}px`;
+    placeStrip();
   });
   const endDrag = () => {
     if (!dragging) return;

@@ -1,6 +1,10 @@
 import Dexie, { type Table } from 'dexie';
 import type { Interaction, MsgEvent } from './analytics-types';
 import type { Contact, CrmNote, PipelineConfig, Reminder, Template } from './crm-types';
+import type { Slot } from './slots';
+import type { ArLogEntry, ArRule } from './autoreply-types';
+import type { Order, PosSettings, Product } from './pos-types';
+import type { Campaign, OutboxItem, Schedule, SendLogEntry } from './outbox-types';
 import type { Account, AccountGroup, ArchivedMsg, SessionMeta } from './messages';
 
 export interface SessionBlob { id: string; payload: string } // JSON string of snapshot (see content/session.ts)
@@ -21,6 +25,16 @@ class ToolkitDB extends Dexie {
   templates!: Table<Template, string>;
   events!: Table<MsgEvent, string>;
   interactions!: Table<Interaction, string>;
+  slots!: Table<Slot, string>;
+  arRules!: Table<ArRule, string>;
+  arLog!: Table<ArLogEntry, string>;
+  products!: Table<Product, string>;
+  orders!: Table<Order, string>;
+  posSettings!: Table<PosSettings, string>;
+  campaigns!: Table<Campaign, string>;
+  outbox!: Table<OutboxItem, string>;
+  schedules!: Table<Schedule, string>;
+  sendLog!: Table<SendLogEntry, string>;
   constructor() {
     super('wwt');
     this.version(1).stores({
@@ -43,6 +57,24 @@ class ToolkitDB extends Dexie {
     this.version(4).stores({
       events: 'key, accountId, ts, [accountId+ts], chatId',
       interactions: 'key, accountId, lastInTs, lastOutTs, firstInTs',
+    });
+    this.version(5).stores({
+      slots: 'id, lastUsedAt',
+    });
+    this.version(6).stores({
+      arRules: 'id, enabled, order',
+      arLog: 'id, ts, chatKey',
+    });
+    this.version(7).stores({
+      campaigns: 'id, status, createdAt',
+      outbox: 'id, campaignId, status, dueAt, [status+dueAt]',
+      schedules: 'id, enabled, nextRunAt',
+      sendLog: 'id, ts, campaignId',
+    });
+    this.version(8).stores({
+      products: 'id, sku, category, active',
+      orders: 'id, contactKey, status, createdAt, [status+createdAt]',
+      posSettings: 'id',
     });
   }
 }

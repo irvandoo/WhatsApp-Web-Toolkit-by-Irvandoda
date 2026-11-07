@@ -4,12 +4,16 @@ import { buildUnanswered, formatDuration, resolveRange, summarize } from '../sha
 import { db } from '../shared/db';
 import { BarChart, Heatmap } from './Charts';
 import { eventsIn, useContacts, useEarliest, useInteractions, useLive } from './data';
+import { HotLeads } from './HotLeads';
 import { Report } from './Report';
+import { useLeadIntel } from '../shared/lead-intel-live';
 import { Unanswered } from './Unanswered';
 import { fmtNum } from './util';
 
 const RANGES: [RangeKey, string][] = [['today', 'Hari ini'], ['week', 'Minggu'], ['month', 'Bulan'], ['year', 'Tahun'], ['all', 'Semua'], ['custom', 'Custom']];
-type Tab = 'ringkasan' | 'belum' | 'laporan';
+type Tab = 'ringkasan' | 'belum' | 'hot' | 'laporan';
+const HASH_TAB: Record<string, Tab> = { ringkasan: 'ringkasan', unanswered: 'belum', belum: 'belum', hot: 'hot', laporan: 'laporan' };
+const tabFromHash = (): Tab => HASH_TAB[location.hash.replace(/^#/, '')] ?? 'ringkasan';
 const NO_EVENTS: MsgEvent[] = [];
 const dateVal = (ts: number) => { const d = new Date(ts); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const startOf = (s: string) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d).getTime(); };
@@ -24,7 +28,7 @@ function Delta({ cur, prev, invert }: { cur: number; prev: number | null; invert
 }
 
 export function App() {
-  const [tab, setTab] = useState<Tab>('ringkasan');
+  const [tab, setTab] = useState<Tab>(tabFromHash);
   const [key, setKey] = useState<RangeKey>('month');
   const [cFrom, setCFrom] = useState(() => dateVal(Date.now() - 7 * 86400e3));
   const [cTo, setCTo] = useState(() => dateVal(Date.now()));
@@ -33,6 +37,7 @@ export function App() {
   const [now, setNow] = useState(Date.now());
   const [msg, setMsg] = useState('');
 
+  useEffect(() => { const f = () => setTab(tabFromHash()); window.addEventListener('hashchange', f); return () => window.removeEventListener('hashchange', f); }, []);
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, []);
   useEffect(() => { if (!msg) return; const t = setTimeout(() => setMsg(''), 3000); return () => clearTimeout(t); }, [msg]);
 
@@ -40,6 +45,7 @@ export function App() {
   const interactions = useInteractions();
   const contacts = useContacts();
   const earliest = useEarliest();
+  const intel = useLeadIntel(interactions, contacts, now);
   const accountNames = useMemo(() => new Map(accounts.map((a) => [a.id, a.name || a.id])), [accounts]);
 
   const day = dateVal(now);
@@ -93,7 +99,7 @@ export function App() {
       </div>
 
       <div className="tabs" role="tablist" aria-label="Bagian analitik">
-        {([['ringkasan', 'Ringkasan'], ['belum', `Belum Dibalas (${unanswered.length})`], ['laporan', 'Laporan']] as [Tab, string][]).map(([k, l]) => (
+        {([['ringkasan', 'Ringkasan'], ['belum', `Belum Dibalas (${unanswered.length})`], ['hot', 'Lead Panas'], ['laporan', 'Laporan']] as [Tab, string][]).map(([k, l]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>
@@ -129,7 +135,13 @@ export function App() {
 
       {tab === 'belum' && hasData && (
         <div role="tabpanel">
-          <Unanswered interactions={interactions} contacts={contacts} accountNames={accountNames} accountId={acc} includeGroups={groups} now={now} toast={setMsg} />
+          <Unanswered interactions={interactions} contacts={contacts} accountNames={accountNames} accountId={acc} includeGroups={groups} now={now} intel={intel} toast={setMsg} />
+        </div>
+      )}
+
+      {tab === 'hot' && hasData && (
+        <div role="tabpanel">
+          <HotLeads intel={intel} interactions={interactions} accountId={acc} includeGroups={groups} accountNames={accountNames} toast={setMsg} />
         </div>
       )}
 

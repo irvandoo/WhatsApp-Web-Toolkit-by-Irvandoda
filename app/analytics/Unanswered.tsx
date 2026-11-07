@@ -2,27 +2,34 @@ import { useMemo, useState } from 'react';
 import type { Interaction, LeadKind, UnansweredRow } from '../shared/analytics-types';
 import type { Contact, CrmMsg } from '../shared/crm-types';
 import { buildUnanswered, formatDuration } from '../shared/analytics-logic';
-import { fmtDateTime, KIND_LABEL, PRIO_LABEL } from './util';
+import { exportLeadIntelCsv, INTENT_LABEL, INTEL_NOTE, MOMENTUM_GLYPH, MOMENTUM_LABEL, TEMP_LABEL, type LeadIntel, type Momentum, type Temperature } from '../shared/lead-intel-logic';
+import { downloadCsv, fmtDateTime, KIND_LABEL, PRIO_LABEL, stamp } from './util';
 
 type Prio = UnansweredRow['priority'];
-type SortKey = 'name' | 'phone' | 'accountId' | 'kind' | 'waitingMs' | 'since' | 'priority' | 'stage';
+type SortKey = 'name' | 'phone' | 'accountId' | 'kind' | 'waitingMs' | 'since' | 'priority' | 'stage' | 'temp' | 'eng' | 'momentum';
 const PRIOS: Prio[] = ['urgent', 'high', 'normal', 'low'];
 const PRANK: Record<Prio, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
 const H = 3600e3;
+const TRANK: Record<Temperature, number> = { hot: 0, warm: 1, cold: 2, dormant: 3 };
+const TEMPS: Temperature[] = ['hot', 'warm', 'cold', 'dormant'];
+const MOMS: Momentum[] = ['rising', 'steady', 'slipping', 'stalled'];
 const MIN_PRESETS: [string, number][] = [['Semua', 0], ['> 1 jam', H], ['> 6 jam', 6 * H], ['> 24 jam', 24 * H], ['> 3 hari', 72 * H], ['> 7 hari', 168 * H]];
 
 interface Props {
   interactions: Interaction[]; contacts: Contact[]; accountNames: Map<string, string>;
-  accountId: string; includeGroups: boolean; now: number; toast: (m: string) => void;
+  accountId: string; includeGroups: boolean; now: number; intel: Map<string, LeadIntel>; toast: (m: string) => void;
 }
 
-export function Unanswered({ interactions, contacts, accountNames, accountId, includeGroups, now, toast }: Props) {
+export function Unanswered({ interactions, contacts, accountNames, accountId, includeGroups, now, intel, toast }: Props) {
   const [prios, setPrios] = useState<Set<Prio>>(new Set());
   const [kind, setKind] = useState<'' | LeadKind>('');
   const [minMs, setMinMs] = useState(0);
   const [stage, setStage] = useState('');
   const [tag, setTag] = useState('');
   const [q, setQ] = useState('');
+  const [temp, setTemp] = useState<'' | Temperature>('');
+  const [mom, setMom] = useState<'' | Momentum>('');
+  const [minEng, setMinEng] = useState(0);
   const [sort, setSort] = useState<{ k: SortKey; dir: 1 | -1 }>({ k: 'waitingMs', dir: -1 });
 
   const cmap = useMemo(() => new Map(contacts.map((c) => [c.key, c])), [contacts]);
@@ -43,7 +50,8 @@ export function Unanswered({ interactions, contacts, accountNames, accountId, in
     const s = q.trim().toLowerCase();
     const list = rows.filter((r) =>
       (!prios.size || prios.has(r.priority)) && (!kind || r.kind === kind) && r.waitingMs >= minMs &&
-      (!stage || r.stage === stage) && (!tag || r.tags?.includes(tag)) &&
+      (!stage || r.stage === stage) &&
+      (!temp || intel.get(r.key)?.temperature === temp) && (!mom || intel.get(r.key)?.momentum === mom) && (intel.get(r.key)?.engagement ?? 0) >= minEng && (!tag || r.tags?.includes(tag)) &&
       (!s || r.name.toLowerCase().includes(s) || r.phone.includes(s)));
     const val = (r: UnansweredRow): string | number => {
       switch (sort.k) {
@@ -54,6 +62,9 @@ export function Unanswered({ interactions, contacts, accountNames, accountId, in
         case 'waitingMs': return r.waitingMs;
         case 'since': return r.waitingSinceTs;
         case 'priority': return PRANK[r.priority];
+        case 'temp': return TRANK[intel.get(r.key)?.temperature ?? 'dormant'];
+        case 'eng': return intel.get(r.key)?.engagement ?? 0;
+        case 'momentum': return MOMS.indexOf(intel.get(r.key)?.momentum ?? 'steady');
         case 'stage': return (r.stage ?? '').toLowerCase();
       }
     };
@@ -62,12 +73,12 @@ export function Unanswered({ interactions, contacts, accountNames, accountId, in
       const c = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'id');
       return (c || b.waitingMs - a.waitingMs) * (c ? sort.dir : 1);
     });
-  }, [rows, prios, kind, minMs, stage, tag, q, sort, accountNames]);
+  }, [rows, prios, kind, minMs, stage, tag, q, sort, accountNames, intel, temp, mom, minEng]);
 
   const toggleP = (p: Prio) => setPrios((s) => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n; });
   const th = (k: SortKey, label: string, cls = '') => (
     <th scope="col" className={cls} aria-sort={sort.k === k ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}>
-      <button onClick={() => setSort((s) => s.k === k ? { k, dir: (-s.dir) as 1 | -1 } : { k, dir: k === 'waitingMs' || k === 'since' ? -1 : 1 })}>
+      <button onClick={() => setSort((s) => s.k === k ? { k, dir: (-s.dir) as 1 | -1 } : { k, dir: k === 'waitingMs' || k === 'since' || k === 'eng' ? -1 : 1 })}>
         {label}{sort.k === k ? (sort.dir === 1 ? ' ▲' : ' ▼') : ''}
       </button>
     </th>
@@ -102,13 +113,23 @@ export function Unanswered({ interactions, contacts, accountNames, accountId, in
         <select aria-label="Tag" value={tag} onChange={(e) => setTag(e.target.value)}>
           <option value="">Semua tag</option>{tags.map((s) => <option key={s}>{s}</option>)}
         </select>
+        <select aria-label="Temperature" value={temp} onChange={(e) => setTemp(e.target.value as '' | Temperature)}>
+          <option value="">Semua temperature</option>{TEMPS.map((t) => <option key={t} value={t}>{TEMP_LABEL[t]}</option>)}
+        </select>
+        <select aria-label="Momentum" value={mom} onChange={(e) => setMom(e.target.value as '' | Momentum)}>
+          <option value="">Semua momentum</option>{MOMS.map((t) => <option key={t} value={t}>{MOMENTUM_LABEL[t]}</option>)}
+        </select>
+        <select aria-label="Engagement minimal" value={minEng} onChange={(e) => setMinEng(Number(e.target.value))}>
+          {[0, 30, 50, 70].map((v) => <option key={v} value={v}>{v ? `Engagement >= ${v}` : 'Semua engagement'}</option>)}
+        </select>
+        <button onClick={() => downloadCsv(`belum-dibalas-intel-${stamp()}.csv`, exportLeadIntelCsv(view.map((r) => intel.get(r.key)).filter((x): x is LeadIntel => !!x)))}>Ekspor CSV (+intel)</button>
         <input type="search" aria-label="Cari" placeholder="Cari nama / nomor" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       <div className="muted" aria-live="polite" style={{ marginBottom: 6 }}>{view.length} dari {rows.length} chat</div>
       <div className="card tw" style={{ padding: 0 }}>
         <table>
           <thead><tr>
-            {th('name', 'Nama')}{th('phone', 'Nomor')}{th('accountId', 'Akun')}{th('kind', 'Jenis')}{th('waitingMs', 'Menunggu')}{th('since', 'Sejak')}{th('priority', 'Prioritas')}{th('stage', 'Tahap CRM & tag')}
+            {th('name', 'Nama')}{th('phone', 'Nomor')}{th('accountId', 'Akun')}{th('kind', 'Jenis')}{th('waitingMs', 'Menunggu')}{th('since', 'Sejak')}{th('priority', 'Prioritas')}{th('temp', 'Temperature')}{th('eng', 'Engagement')}{th('momentum', 'Momentum')}<th scope="col" title="Intent hanya terbaca saat chat dibuka di WhatsApp Web (isi pesan tidak disimpan)">Intent</th>{th('stage', 'Tahap CRM & tag')}
             <th scope="col"><span className="sr">Aksi</span></th>
           </tr></thead>
           <tbody>
@@ -121,14 +142,28 @@ export function Unanswered({ interactions, contacts, accountNames, accountId, in
                 <td className={`w-${r.priority}`}>{formatDuration(r.waitingMs)}</td>
                 <td>{fmtDateTime(r.waitingSinceTs)}</td>
                 <td><span className={`badge b-${r.priority}`}>{PRIO_LABEL[r.priority]}</span></td>
+                <IntelCells l={intel.get(r.key)} />
                 <td>{r.stage ?? <span className="muted">-</span>}{r.tags?.map((t) => <span key={t} className="badge" style={{ marginLeft: 4, fontWeight: 400 }}>{t}</span>)}</td>
                 <td><button onClick={() => void remind(r)}>Buat pengingat</button></td>
               </tr>
             ))}
-            {!view.length && <tr><td colSpan={9} className="empty">Tidak ada yang cocok dengan filter.</td></tr>}
+            {!view.length && <tr><td colSpan={13} className="empty">Tidak ada yang cocok dengan filter.</td></tr>}
           </tbody>
         </table>
       </div>
+      <p className="muted" style={{ fontSize: 12 }}>{INTEL_NOTE}</p>
     </div>
+  );
+}
+
+export function IntelCells({ l }: { l?: LeadIntel }) {
+  if (!l) return <><td>-</td><td>-</td><td>-</td><td>-</td></>;
+  return (
+    <>
+      <td><span className={`badge t-${l.temperature}`}>{TEMP_LABEL[l.temperature]}</span></td>
+      <td className="num" title={l.reason}>{l.engagement}</td>
+      <td title={MOMENTUM_LABEL[l.momentum]}>{MOMENTUM_GLYPH[l.momentum]} {MOMENTUM_LABEL[l.momentum]}</td>
+      <td>{l.intent ? INTENT_LABEL[l.intent] : <span className="muted" title="Tidak ada teks pesan tersimpan">-</span>}</td>
+    </>
   );
 }

@@ -53,6 +53,24 @@ Ekstensi Google Chrome (Manifest V3) untuk **https://web.whatsapp.com/** yang di
 - Laporan: ekspor CSV/JSON, impor CSV, dan unduh template CSV.
 - Semua modul (Hub, CRM, Template, Analitik) tampil sebagai **overlay di layar WhatsApp Web**, bukan tab baru. Jika WhatsApp memblokir pembingkaian, tersedia tombol "Buka di tab".
 
+### Modul di halaman depan WhatsApp Web
+Semua modul muncul sebagai tombol di **navbar WhatsApp Web** dan terbuka sebagai **overlay di layar** (tanpa tab baru):
+
+| Modul | Isi |
+|---|---|
+| **Akun** | Dropdown ganti akun/sesi di tab yang sama (namespace virtual per tab, konsep ala SessionBox; satu akun aktif per tab) |
+| **Belum dibalas** | Lama menunggu, prioritas, sort & filter, badge jumlah |
+| **Auto-reply** | Aturan kata kunci / pesan pertama / di luar jam kerja, jeda acak, batas per jam, jeda ulang per chat, varian & rotasi pesan |
+| **CRM** | Kanban, tag, catatan, pengingat, **lead intelligence** (skor keterlibatan, hot lead, momentum, prioritas tindak lanjut) |
+| **Analitik** | WA baru vs follow-up, rentang waktu, grafik, laporan CSV/JSON, template impor |
+| **Blast & Jadwal** | Kampanye ber-delay, batas harian/jam, jendela jam kirim, jeda otomatis saat error, pesan terjadwal sekali/berulang, pengingat yang bisa mengirim pesan |
+| **POS** | Katalog, kasir, nota (teks WA & cetak), stok, laporan penjualan |
+| **Ekstrak Grup** | Anggota grup → CSV/vCard/JSON, tambah ke CRM (build `full`) |
+| **Preset Industri** | Paket template + aturan + pipeline untuk toko online, restoran/hotel, klinik, pendidikan, jasa keuangan, pemerintahan, CS umum |
+| **Privacy Blur** | Samarkan daftar chat, pesan, nama, foto; Ctrl+Shift+B; blur otomatis saat idle/tidak aktif |
+
+**Aturan pengiriman:** build `store` **tidak mengirim otomatis** — Auto-reply, Blast, dan Jadwal menyiapkan *draf* di kolom chat + notifikasi, Anda yang menekan Enter. Hanya build `full` yang bisa mengirim otomatis, dengan semua pengaman (opt-in wajib, tanpa grup, hormati opt-out, delay & batas).
+
 ### 6. Optimasi memori tab
 - `content-visibility: auto` untuk baris chat dan pesan di luar layar.
 - Animasi dihentikan saat tab tersembunyi.
@@ -75,8 +93,8 @@ POS (katalog, invoice), blast terjadwal dengan jeda aman, ekstrak anggota grup (
 | Snapshot sesi | 🧪 Eksperimental, kemungkinan tidak didukung |
 | CRM | 🟡 Terpasang, belum diuji di browser |
 | Template / quick reply | 🟡 Terpasang, belum diuji di browser |
-| Analitik, pelacakan, belum dibalas, overlay | 🟡 Terpasang, belum diuji di browser |
-| POS, Blast, Ekstrak grup | ⏳ Belum dimulai |
+| Analitik, pelacakan, belum dibalas, overlay, dock navbar | 🟡 Terpasang, belum diuji di browser |
+| Auto-reply, Blast & Jadwal, POS, Ekstrak grup, Preset, Lead intelligence, Privacy Blur, rotasi pesan | 🟡 Terpasang, belum diuji di browser |
 
 ---
 
@@ -116,7 +134,7 @@ POS (katalog, invoice), blast terjadwal dengan jeda aman, ekstrak anggota grup (
 
 - **Stack:** TypeScript, Vite + CRXJS, React 18, Dexie, Vitest.
 - **Jembatan MAIN ↔ isolated world** memakai envelope bertipe dan memvalidasi `source` serta `origin`.
-- **Izin minimal:** `storage`, `alarms`, `scripting`, `unlimitedStorage`, dan host `https://web.whatsapp.com/*` (CRM menambah `notifications`).
+- **Izin minimal:** `storage`, `alarms`, `scripting`, `unlimitedStorage`, `notifications`, dan host `https://web.whatsapp.com/*` (CRM menambah `notifications`).
 
 ---
 
@@ -205,9 +223,8 @@ Gunakan hanya untuk kontak yang **telah memberi persetujuan (opt-in)** dan horma
 - [x] CRM & template (terpasang, perlu uji nyata)
 - [x] Integrasi manifest
 - [ ] Ikon final, i18n lengkap
-- [ ] POS: katalog, keranjang, invoice
-- [ ] Blast terjadwal opt-in + batas harian (build `full`)
-- [ ] Ekstrak anggota grup (build `full`)
+- [x] POS, Blast terjadwal, Ekstrak grup, Auto-reply, Preset, Lead intelligence (terpasang, perlu uji nyata)
+- [ ] Asisten AI (kunci API milik pengguna), webhook & Google Form (opt-in)
 - [ ] Analitik, privacy policy, paket Chrome Web Store
 
 ---

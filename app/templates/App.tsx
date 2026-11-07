@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CrmMsg, Template } from '../shared/crm-types';
+import { normStrategy } from '../shared/rotation';
+import { VariantEditor } from '../shared/ui/VariantEditor';
 import { KNOWN_VARS, render, validateShortcut } from '../shared/template-engine';
 
 const SAMPLE = { nama: 'Budi', telepon: '628123456789', tahap: 'Negosiasi', tanggal: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }), akun: 'Toko A' };
@@ -22,7 +24,9 @@ function parseImport(text: string): Template[] {
     if (typeof title !== 'string' || !title.trim() || title.length > 200) throw new Error(`Item ${i + 1}: judul tidak valid`);
     if (typeof body !== 'string' || !body.trim() || body.length > 5000) throw new Error(`Item ${i + 1}: isi tidak valid`);
     if (category !== undefined && (typeof category !== 'string' || category.length > 60)) throw new Error(`Item ${i + 1}: kategori tidak valid`);
-    return { id: crypto.randomUUID(), shortcut, title: title.trim(), body, category: (category as string | undefined)?.trim() ?? '', usageCount: 0, updatedAt: Date.now() };
+    const variants = Array.isArray(r.variants) ? r.variants.filter((v): v is string => typeof v === 'string' && !!v.trim()) : [];
+    if (variants.length > 10 || variants.some((v) => v.length > 4000)) throw new Error(`Item ${i + 1}: varian tidak valid`);
+    return { id: crypto.randomUUID(), shortcut, title: title.trim(), body, category: (category as string | undefined)?.trim() ?? '', usageCount: 0, updatedAt: Date.now(), ...(variants.length ? { variants, rotation: normStrategy(r.rotation) } : {}) };
   });
 }
 
@@ -74,7 +78,7 @@ export function App() {
     await reload();
   }
   function exportJson() {
-    const out = list.map(({ shortcut, title, category, body }) => ({ shortcut, title, category, body }));
+    const out = list.map(({ shortcut, title, category, body, variants, rotation }) => ({ shortcut, title, category, body, ...(variants?.length ? { variants, rotation } : {}) }));
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' }));
     a.download = 'template-pesan.json';
@@ -147,6 +151,8 @@ export function App() {
             {KNOWN_VARS.map((v) => <button key={v} className="chip" onClick={() => insertVar(`{${v}}`)}>{`{${v}}`}</button>)}
             <button className="chip" onClick={() => insertVar('{Halo|Hai}')}>{'{a|b} spintax'}</button>
           </div>
+          <VariantEditor body={edit.body} variants={edit.variants} rotation={edit.rotation} vars={SAMPLE} maxLen={4000}
+            onChange={(v) => setEdit({ ...edit, variants: v.variants, rotation: v.rotation })} />
           <div>
             <div className="meta">Pratinjau (contoh data) <button className="chip" onClick={() => setSeed((s) => s + 7)}>Acak ulang</button></div>
             <div className="preview">{preview || '-'}</div>

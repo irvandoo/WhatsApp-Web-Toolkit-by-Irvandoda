@@ -1,6 +1,7 @@
 import { db } from '../shared/db';
 import type { CrmMsg, Template } from '../shared/crm-types';
 import { validateShortcut } from '../shared/template-engine';
+import { cleanVariants, normStrategy, validateVariants } from '../shared/rotation';
 
 export const isTplMsg = (m: { kind?: string }): boolean => typeof m?.kind === 'string' && m.kind.startsWith('tpl:');
 
@@ -27,6 +28,8 @@ export async function handleTemplates(m: CrmMsg): Promise<unknown> {
       if (!t || typeof t.id !== 'string' || !t.id) return { error: 'Data template tidak valid' };
       if (!validateShortcut(t.shortcut)) return { error: 'Shortcut harus a-z, 0-9, _ atau -, maksimal 24 karakter' };
       if (!String(t.title ?? '').trim() || !String(t.body ?? '').trim()) return { error: 'Judul dan isi wajib diisi' };
+      const vErr = validateVariants(t.variants);
+      if (vErr) return { error: vErr };
       const dup = await db.templates.where('shortcut').equals(t.shortcut).first();
       if (dup && dup.id !== t.id) return { error: `Shortcut "/${t.shortcut}" sudah dipakai` };
       const prev = await db.templates.get(t.id);
@@ -34,6 +37,8 @@ export async function handleTemplates(m: CrmMsg): Promise<unknown> {
         id: t.id, shortcut: t.shortcut, title: t.title.trim(), body: t.body, category: (t.category ?? '').trim(),
         usageCount: prev?.usageCount ?? (Number.isFinite(t.usageCount) ? t.usageCount : 0), updatedAt: Date.now(),
       };
+      const variants = cleanVariants(t.variants);
+      if (variants.length) { saved.variants = variants; saved.rotation = normStrategy(t.rotation); }
       await db.templates.put(saved);
       return { ok: true, template: saved };
     }

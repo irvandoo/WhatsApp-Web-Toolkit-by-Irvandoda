@@ -2,6 +2,9 @@ import { liveQuery } from 'dexie';
 import { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_STAGES, type Contact, type CrmMsg, type Reminder } from '../shared/crm-types';
 import { db } from '../shared/db';
+import type { Interaction } from '../shared/analytics-types';
+import { FOLLOW_LABEL, INTEL_NOTE, MOMENTUM_GLYPH, MOMENTUM_LABEL, TEMP_LABEL, type LeadIntel } from '../shared/lead-intel-logic';
+import { useLeadIntel } from '../shared/lead-intel-live';
 
 const send = <T,>(m: CrmMsg): Promise<T> => chrome.runtime.sendMessage(m) as Promise<T>;
 const idr = (n: number) => 'Rp ' + n.toLocaleString('id-ID');
@@ -31,6 +34,12 @@ export function App() {
   const reminders = useLive(() => db.reminders.toArray(), [] as Reminder[]);
   const stages = useLive(async () => (await db.pipeline.get('default'))?.stages ?? [...DEFAULT_STAGES], [...DEFAULT_STAGES] as string[]);
   const accounts = useLive(() => db.accounts.toArray(), []);
+  const interactions = useLive(() => db.interactions.toArray(), [] as Interaction[]);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, []);
+  const intel = useLeadIntel(interactions, contacts, now);
+  const [hotOnly, setHotOnly] = useState(false);
+  const [byEng, setByEng] = useState(false);
   const [acc, setAcc] = useState('');
   const [tag, setTag] = useState('');
   const [q, setQ] = useState('');
@@ -39,9 +48,10 @@ export function App() {
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     return contacts.filter((c) =>
+      (!hotOnly || intel.get(c.key)?.temperature === 'hot') &&
       (!acc || c.accountId === acc) && (!tag || c.tags.includes(tag)) &&
       (!s || c.name.toLowerCase().includes(s) || c.phone.includes(s) || c.tags.some((t) => t.toLowerCase().includes(s))));
-  }, [contacts, acc, tag, q]);
+  }, [contacts, acc, tag, q, hotOnly, intel]);
 
   const tabs: [Tab, string][] = [['kanban', 'Kanban'], ['daftar', 'Daftar'], ['pengingat', 'Pengingat'], ['pipeline', 'Pipeline']];
   return (
@@ -59,17 +69,30 @@ export function App() {
             <option value="">Semua tag</option>
             {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
+          <button className={hotOnly ? 'on' : ''} aria-pressed={hotOnly} onClick={() => setHotOnly(!hotOnly)}>Hot leads</button>
+          <button className={byEng ? 'on' : ''} aria-pressed={byEng} onClick={() => setByEng(!byEng)}>Urut engagement</button>
         </div>
       )}
-      {tab === 'kanban' && <Kanban contacts={filtered} stages={stages} />}
-      {tab === 'daftar' && <List contacts={filtered} />}
+      {tab === 'kanban' && <Kanban contacts={filtered} stages={stages} intel={intel} byEng={byEng} />}
+      {tab === 'daftar' && <List contacts={filtered} intel={intel} />}
       {tab === 'pengingat' && <Reminders reminders={reminders} contacts={contacts} />}
       {tab === 'pipeline' && <Pipeline stages={stages} />}
+      {(tab === 'kanban' || tab === 'daftar') && <p className="mut" style={{ fontSize: 12 }}>{INTEL_NOTE}</p>}
     </div>
   );
 }
 
-function Kanban({ contacts, stages }: { contacts: Contact[]; stages: string[] }) {
+function IntelBadges({ l }: { l?: LeadIntel }) {
+  if (!l) return null;
+  return (
+    <div className="intel" title={`${l.reason}. Saran: ${l.nextAction}`}>
+      <span className={`dot t-${l.temperature}`} />{TEMP_LABEL[l.temperature]} | Skor {l.engagement} | {MOMENTUM_GLYPH[l.momentum]} {MOMENTUM_LABEL[l.momentum]}
+      <span className={`pri p-${l.followUpPriority}`}>{FOLLOW_LABEL[l.followUpPriority]}</span>
+    </div>
+  );
+}
+
+function Kanban({ contacts, stages, intel, byEng }: { contacts: Contact[]; stages: string[]; intel: Map<string, LeadIntel>; byEng: boolean }) {
   const [over, setOver] = useState('');
   const drop = (stage: string, key: string) => {
     setOver('');
@@ -80,6 +103,7 @@ function Kanban({ contacts, stages }: { contacts: Contact[]; stages: string[] })
     <div className="board">
       {stages.map((st) => {
         const items = contacts.filter((c) => (stages.includes(c.stage) ? c.stage : stages[0]) === st);
+        if (byEng) items.sort((a, b) => (intel.get(b.key)?.engagement ?? 0) - (intel.get(a.key)?.engagement ?? 0));
         const total = items.reduce((a, c) => a + (c.value || 0), 0);
         return (
           <div key={st} className={'col' + (over === st ? ' over' : '')}
@@ -93,6 +117,7 @@ function Kanban({ contacts, stages }: { contacts: Contact[]; stages: string[] })
                 <div className="mut">{c.phone}{c.assignee ? ` - ${c.assignee}` : ''}</div>
                 <div>{c.tags.map((t) => <span className="tag" key={t}>{t}</span>)}</div>
                 {c.value > 0 && <div>{idr(c.value)}</div>}
+                <IntelBadges l={intel.get(c.key)} />
               </div>
             ))}
           </div>
@@ -102,20 +127,26 @@ function Kanban({ contacts, stages }: { contacts: Contact[]; stages: string[] })
   );
 }
 
-type SortKey = 'name' | 'phone' | 'stage' | 'value' | 'updatedAt';
+type SortKey = 'name' | 'phone' | 'stage' | 'value' | 'updatedAt' | 'eng' | 'temp' | 'prio';
+const TR = { hot: 0, warm: 1, cold: 2, dormant: 3 } as const;
+const PR = { urgent: 0, high: 1, normal: 2, low: 3 } as const;
 
-function List({ contacts }: { contacts: Contact[] }) {
+function List({ contacts, intel }: { contacts: Contact[]; intel: Map<string, LeadIntel> }) {
   const [sk, setSk] = useState<SortKey>('updatedAt');
   const [asc, setAsc] = useState(false);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [bulk, setBulk] = useState('');
   const rows = useMemo(() => {
     const r = [...contacts].sort((a, b) => {
+      if (sk === 'eng' || sk === 'temp' || sk === 'prio') {
+        const f = (c: Contact) => { const l = intel.get(c.key); return sk === 'eng' ? l?.engagement ?? 0 : sk === 'temp' ? TR[l?.temperature ?? 'dormant'] : PR[l?.followUpPriority ?? 'low']; };
+        return (f(a) - f(b)) * (asc ? 1 : -1);
+      }
       const x = a[sk], y = b[sk];
       return (typeof x === 'number' ? x - (y as number) : String(x).localeCompare(String(y))) * (asc ? 1 : -1);
     });
     return r;
-  }, [contacts, sk, asc]);
+  }, [contacts, sk, asc, intel]);
   const th = (k: SortKey, l: string) => <th onClick={() => { if (sk === k) setAsc(!asc); else { setSk(k); setAsc(true); } }}>{l}{sk === k ? (asc ? ' ▲' : ' ▼') : ''}</th>;
   const toggle = (k: string) => setSel((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const applyBulk = async () => {
@@ -139,16 +170,19 @@ function List({ contacts }: { contacts: Contact[] }) {
       </div>
       <table>
         <thead><tr><th><input type="checkbox" checked={!!rows.length && sel.size === rows.length} onChange={(e) => setSel(e.target.checked ? new Set(rows.map((r) => r.key)) : new Set())} /></th>
-          {th('name', 'Nama')}{th('phone', 'Telepon')}{th('stage', 'Tahap')}<th>Tag</th>{th('value', 'Nilai')}{th('updatedAt', 'Diperbarui')}</tr></thead>
+          {th('name', 'Nama')}{th('phone', 'Telepon')}{th('stage', 'Tahap')}<th>Tag</th>{th('temp', 'Temperature')}{th('eng', 'Engagement')}{th('prio', 'Follow-up')}{th('value', 'Nilai')}{th('updatedAt', 'Diperbarui')}</tr></thead>
         <tbody>
           {rows.map((c) => (
             <tr key={c.key}>
               <td><input type="checkbox" checked={sel.has(c.key)} onChange={() => toggle(c.key)} /></td>
               <td>{c.name || c.chatId}{c.optOut ? ' (opt-out)' : ''}</td><td>{c.phone}</td><td>{c.stage}</td>
-              <td>{c.tags.join(', ')}</td><td>{idr(c.value)}</td><td>{new Date(c.updatedAt).toLocaleString('id-ID')}</td>
+              <td>{c.tags.join(', ')}</td><td>{intel.get(c.key) ? TEMP_LABEL[intel.get(c.key)!.temperature] : '-'}</td>
+              <td>{intel.get(c.key)?.engagement ?? '-'}</td>
+              <td title={intel.get(c.key)?.nextAction}>{intel.get(c.key) ? `${FOLLOW_LABEL[intel.get(c.key)!.followUpPriority]}: ${intel.get(c.key)!.reason}` : '-'}</td>
+              <td>{idr(c.value)}</td><td>{new Date(c.updatedAt).toLocaleString('id-ID')}</td>
             </tr>
           ))}
-          {!rows.length && <tr><td colSpan={7} className="mut">Belum ada kontak.</td></tr>}
+          {!rows.length && <tr><td colSpan={10} className="mut">Belum ada kontak.</td></tr>}
         </tbody>
       </table>
     </>

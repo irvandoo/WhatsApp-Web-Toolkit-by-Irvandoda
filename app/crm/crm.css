@@ -19,3 +19,8 @@ table{border-collapse:collapse;width:100%;background:var(--card)}
 th,td{border-bottom:1px solid var(--bd);padding:5px 8px;text-align:left}
 th{cursor:pointer;user-select:none}
 .overdue{color:#d33}
+
+.intel{font-size:11px;color:var(--mut);margin-top:3px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;background:#889}
+.t-hot{background:#d93025}.t-warm{background:#f29900}.t-cold{background:#3b82f6}.t-dormant{background:#889}
+.pri{margin-left:6px;font-weight:700}.p-urgent{color:#d33}.p-high{color:#e08a00}
