@@ -45,8 +45,10 @@
         "pos/index.html",
         "blast/index.html",
         "presets/index.html",
+        "quickstart/index.html",
         "assets/*",
         "assets/credit-D45yROeQ.js",
+        "assets/engine-health-C4mUYVmq.js",
         "assets/messages-zeJTLS5D.js",
         "assets/session-codec-BbjBUFD2.js",
         "assets/slots-logic-DwQnGhMi.js",
@@ -61,7 +63,7 @@
         "assets/template-engine-BoGLHE2L.js",
         "assets/wa-format-Cxt_uRRu.js",
         "assets/crm-types-BrsAoK90.js",
-        "assets/index.ts-6hBGgwYp.js",
+        "assets/index.ts-abSJwzEW.js",
         "assets/virtual-session.js-CWgDXvAI.js",
         "assets/wa-adapter.ts-BBfVjdco.js"
       ],
@@ -71,7 +73,7 @@
   "content_scripts": [
     {
       "js": [
-        "assets/index.ts-loader-BOYGXf1i.js"
+        "assets/index.ts-loader-Dti2zeq5.js"
       ],
       "matches": [
         "https://web.whatsapp.com/*"

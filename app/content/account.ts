@@ -1,5 +1,6 @@
 import type { RuntimeMsg } from '../shared/messages';
 import { listChats, ping } from './sync';
+import { isEngineOn } from './engine-health';
 
 const EVERY_MS = 15_000;
 
@@ -13,6 +14,7 @@ export function mountAccountReporter(): void {
     busy = true;
     try {
       if (!chrome.runtime?.id) return stop();
+      if (!isEngineOn('accountStatus')) return;
       const p = await ping();
       if (!p.accountId) return;
       let unread = 0, chatCount = 0;

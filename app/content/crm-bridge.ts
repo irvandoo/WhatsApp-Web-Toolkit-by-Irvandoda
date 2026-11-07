@@ -7,23 +7,27 @@ import { INTENT_LABEL, INTEL_NOTE, MOMENTUM_GLYPH, MOMENTUM_LABEL, TEMP_LABEL, t
 
 const CSS = `
 :host{all:initial}
-.bar{position:fixed;top:64px;right:12px;z-index:99998;max-width:360px;background:#fff;color:#111;border-radius:8px;padding:6px 8px;font:12px system-ui;box-shadow:0 2px 10px #0004;display:none}
+.bar,.bar *{box-sizing:border-box}
+.bar{--bg:#fbfcfb;--fg:#26332e;--mut:#66756f;--bd:#e3e9e6;--ac:#3fae6b;--soft:#e6f4ec;--ib:#fff;
+position:fixed;top:64px;right:12px;z-index:99998;max-width:360px;background:var(--bg);color:var(--fg);border:1px solid var(--bd);border-radius:14px;padding:8px 10px;font:12px system-ui;box-shadow:0 10px 30px rgba(38,51,46,.14);display:none}
 .bar.show{display:block}
-.row{display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin:2px 0}
-select,input[type=text],input[type=datetime-local]{font:12px system-ui;padding:2px 4px;border:1px solid #bbb;border-radius:4px;max-width:150px}
-button{font:12px system-ui;padding:2px 7px;border:1px solid #25d366;background:#fff;border-radius:4px;cursor:pointer}
-small{color:#667}
-.li{border-bottom:1px solid #ddd;padding-bottom:4px;margin-bottom:4px;display:none}
+.row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:3px 0}
+select,input[type=text],input[type=datetime-local]{font:12px system-ui;padding:3px 6px;border:1px solid var(--bd);background:var(--ib);color:var(--fg);border-radius:8px;max-width:150px}
+select:focus,input:focus{outline:2px solid var(--ac);outline-offset:1px}
+button{font:12px system-ui;padding:3px 9px;border:1px solid var(--bd);background:var(--ib);color:var(--fg);border-radius:8px;cursor:pointer}
+button:hover{background:var(--soft);border-color:var(--ac)}
+small{color:var(--mut)}
+.li{border-bottom:1px solid var(--bd);padding-bottom:4px;margin-bottom:4px;display:none}
 .li.show{display:block}
-.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;background:#889}
-.t-hot{background:#d93025}.t-warm{background:#f29900}.t-cold{background:#3b82f6}.t-dormant{background:#889}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;background:#9aa8a1}
+.t-hot{background:#d9665c}.t-warm{background:#e0a24f}.t-cold{background:#6a9be0}.t-dormant{background:#9aa8a1}
 .tb{font-weight:700}
-.meter{flex:1;min-width:60px;height:6px;background:#0002;border-radius:3px;overflow:hidden}
-.meter>i{display:block;height:100%;background:#25d366}
-.chip{background:#0001;border-radius:10px;padding:0 7px}
+.meter{flex:1;min-width:60px;height:6px;background:var(--bd);border-radius:3px;overflow:hidden}
+.meter>i{display:block;height:100%;background:var(--ac)}
+.chip{background:var(--soft);border-radius:10px;padding:0 7px}
 .mom{font-weight:700}
 .next{font-weight:600}
-@media (prefers-color-scheme:dark){.li{border-color:#444}.bar{background:#1f2c34;color:#e9edef}select,input{background:#2a3942;color:#e9edef;border-color:#555}button{background:#2a3942;color:#e9edef}}`;
+@media (prefers-color-scheme:dark){.bar{--bg:#141b18;--fg:#dfe8e3;--mut:#9aaaa3;--bd:#27322d;--ac:#58c487;--soft:#1d3327;--ib:#1b2420;box-shadow:0 10px 30px rgba(0,0,0,.45)}}`;
 
 const send = <T>(m: CrmMsg): Promise<T> => chrome.runtime.sendMessage(m) as Promise<T>;
 

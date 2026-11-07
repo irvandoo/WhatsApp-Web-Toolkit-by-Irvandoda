@@ -45,6 +45,7 @@ export default defineConfig(({ mode }) => {
           pos: path.resolve(app, 'pos/index.html'),
           blast: path.resolve(app, 'blast/index.html'),
           presets: path.resolve(app, 'presets/index.html'),
+          quickstart: path.resolve(app, 'quickstart/index.html'),
         },
       },
     },

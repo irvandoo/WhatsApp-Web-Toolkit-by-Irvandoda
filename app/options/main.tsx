@@ -1,4 +1,5 @@
 import { createRoot } from 'react-dom/client';
+import '../shared/ui/theme.css';
 import '../shared/ui/ui.css';
 import { About } from '../shared/About';
 import { t } from '../shared/ui/i18n';

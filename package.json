@@ -14,6 +14,7 @@
     "package:full": "npm run build:full && node scripts/package.mjs full",
     "prepare": "git config core.hooksPath .githooks || exit 0",
     "typecheck": "tsc --noEmit",
+    "audit:contrast": "node scripts/contrast-audit.mjs",
     "test": "vitest run"
   },
   "dependencies": {

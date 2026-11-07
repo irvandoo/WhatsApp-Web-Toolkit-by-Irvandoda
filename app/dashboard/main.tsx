@@ -1,4 +1,5 @@
 import { createRoot } from 'react-dom/client';
+import '../shared/ui/theme.css';
 import '../shared/ui/ui.css';
 import './dashboard.css';
 import { App } from './App';

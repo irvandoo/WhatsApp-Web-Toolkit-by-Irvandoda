@@ -4,15 +4,17 @@ import type { LeadIntel } from '../shared/lead-intel-logic';
 import { ALL_SECTIONS, accountLabelOf, buildReportModel, defaultSubtitle, HONEST_NOTE, reportFilename, type Orientation, type ReportSections } from '../shared/report/model';
 import { buildWaReportText } from '../shared/report/wa-text';
 import { heatmapGrid } from '../shared/report/model';
+import type { Stats } from '../shared/stats-logic';
 import { makePdf, makePng, makeXlsx, renderPreview, saveBlob, type Format, type OutFile } from './exporter';
 
 interface Props {
+  stats: Stats;
   summary: Summary; prev: Summary | null; unanswered: UnansweredRow[]; hot: LeadIntel[]; interactions: Interaction[]; events: MsgEvent[];
   includeGroups: boolean; accountNames: Map<string, string>; accountId: string; now: number; onClose: () => void; onOther: () => void;
 }
 
 const FORMATS: [Format, string][] = [['xlsx', 'Excel (.xlsx)'], ['wa', 'Teks WhatsApp'], ['pdf', 'PDF'], ['png', 'PNG']];
-const SECS: [keyof ReportSections, string][] = [['kpi', 'Ringkasan KPI'], ['charts', 'Grafik harian/mingguan/bulanan'], ['heatmap', 'Heatmap jam x hari'], ['unanswered', 'Belum Dibalas'], ['hot', 'Lead Panas'], ['interactions', 'Daftar interaksi']];
+const SECS: [keyof ReportSections, string][] = [['kpi', 'Ringkasan KPI'], ['charts', 'Grafik harian/mingguan/bulanan'], ['heatmap', 'Heatmap jam x hari'], ['unanswered', 'Belum Dibalas'], ['hot', 'Lead Panas'], ['interactions', 'Daftar interaksi'], ['stats', 'Statistik (insight, funnel, waktu balasan)']];
 const BIZ_KEY = 'wwt.report.business';
 const loadBiz = () => { try { return localStorage.getItem(BIZ_KEY) ?? ''; } catch { return ''; } };
 const saveBiz = (v: string) => { try { localStorage.setItem(BIZ_KEY, v); } catch { /* ignore */ } };
@@ -38,12 +40,12 @@ export function ExportDialog(p: Props) {
 
   const model = useMemo(() => buildReportModel({
     summary: p.summary, prev: p.prev, unanswered: p.unanswered, hot: p.hot, interactions: p.interactions, events: p.events, includeGroups: p.includeGroups,
-    accountNames: p.accountNames, accountId: p.accountId, title, subtitle, business, sections, now: p.now,
-  }), [p.summary, p.prev, p.unanswered, p.hot, p.interactions, p.events, p.includeGroups, p.accountNames, p.accountId, title, subtitle, business, sections, p.now]);
+    accountNames: p.accountNames, accountId: p.accountId, title, subtitle, business, sections, now: p.now, stats: p.stats,
+  }), [p.stats, p.summary, p.prev, p.unanswered, p.hot, p.interactions, p.events, p.includeGroups, p.accountNames, p.accountId, title, subtitle, business, sections, p.now]);
 
   const wa = useMemo(() => format !== 'wa' ? null : buildWaReportText(p.summary, p.unanswered, p.hot, {
-    title, business, accountLabel: accLabel, prev: p.prev, topN, now: p.now, sections, heatmap: heatmapGrid(p.events, p.includeGroups).grid,
-  }), [format, p.summary, p.unanswered, p.hot, title, business, accLabel, p.prev, topN, p.now, sections, p.events, p.includeGroups]);
+    title, business, accountLabel: accLabel, prev: p.prev, topN, now: p.now, sections, heatmap: heatmapGrid(p.events, p.includeGroups).grid, stats: p.stats,
+  }), [p.stats, format, p.summary, p.unanswered, p.hot, title, business, accLabel, p.prev, topN, p.now, sections, p.events, p.includeGroups]);
 
   // live canvas preview (debounced; first page only)
   useEffect(() => {
@@ -145,7 +147,7 @@ export function ExportDialog(p: Props) {
             <h3>Pratinjau{(format === 'pdf' || format === 'png') && pages > 0 ? ` (halaman 1 dari ${pages})` : ''}{wa && wa.parts.length > 1 ? ` (${wa.parts.length} bagian)` : ''}</h3>
             {format === 'wa' && wa && <pre className="wa-pre" tabIndex={0} aria-label="Pratinjau teks WhatsApp">{wa.text}</pre>}
             {(format === 'pdf' || format === 'png') && <div className="cv-wrap"><canvas ref={canvasRef} aria-label="Pratinjau halaman pertama" /></div>}
-            {format === 'xlsx' && <p className="muted">Sheet: Ringkasan{sections.charts ? ', Harian' : ''}{sections.heatmap ? ', Heatmap' : ''}{sections.unanswered ? `, Belum Dibalas (${p.unanswered.length} baris)` : ''}{sections.hot ? `, Lead Panas (${p.hot.length} baris)` : ''}{sections.interactions ? `, Interaksi (${p.interactions.length} baris)` : ''}.</p>}
+            {format === 'xlsx' && <p className="muted">Sheet: Ringkasan{sections.charts ? ', Harian' : ''}{sections.heatmap ? ', Heatmap' : ''}{sections.unanswered ? `, Belum Dibalas (${p.unanswered.length} baris)` : ''}{sections.hot ? `, Lead Panas (${p.hot.length} baris)` : ''}{sections.interactions ? `, Interaksi (${p.interactions.length} baris)` : ''}{sections.stats ? ', Statistik' : ''}.</p>}
           </div>
         </div>
         <div className="modal-foot">

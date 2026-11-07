@@ -4,6 +4,8 @@ import { IS_FULL } from '../shared/credit';
 import { currentSlot, openSwitcher } from './switcher';
 import { getAutoReplyState, onAutoReplyState } from './autoreply';
 import { getBlurState, onBlurState, setBlur } from './privacy-blur';
+import type { Indicator } from '../shared/runmode';
+import { ensureNavPulseStyle, levelColor, levelTooltip, onIndicator, toggleStatusPopover } from './status';
 
 /**
  * Module dock: puts the toolkit modules directly on WhatsApp's navbar (one item each).
@@ -12,12 +14,13 @@ import { getBlurState, onBlurState, setBlur } from './privacy-blur';
 
 export const PREF_KEY = 'wwt-dock';
 const POLL_MS = 30_000;
-const GREEN = '#25d366';
-const AMBER = '#f2b84b';
+const GREEN = '#3fae6b';
+const AMBER = '#e0b45c';
 
 export interface DockDef { id: string; label: string; iconPath: string; stroke?: boolean }
 export const DOCK_DEFS: DockDef[] = [
   { id: 'account', label: 'Akun', stroke: true, iconPath: 'M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM4 21c0-4 4-6 8-6s8 2 8 6' },
+  { id: 'status', label: 'Status', stroke: true, iconPath: 'M3 12h4l2.5-6 4 12 2.5-6H21' },
   { id: 'unanswered', label: 'Belum dibalas', stroke: true, iconPath: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM12 7v5l3 2' },
   { id: 'autoreply', label: 'Auto-reply', stroke: true, iconPath: 'M13 2 4 14h7l-1 8 9-12h-7l1-8Z' },
   { id: 'crm', label: 'CRM', stroke: true, iconPath: 'M9 4.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM2.5 20c.6-3.5 3.2-5.5 6.5-5.5s5.9 2 6.5 5.5M17 11a3 3 0 1 0 0-6M18.5 14.7c1.8.6 3 2.3 3.3 5' },
@@ -31,7 +34,7 @@ export const DOCK_DEFS: DockDef[] = [
   { id: 'toolkit', label: 'Toolkit', iconPath: TOOLKIT_GLYPH },
 ];
 /** Items the user may hide (the Toolkit entry always stays, it opens the panel that holds the setting). */
-export const TOGGLEABLE = DOCK_DEFS.filter((d) => d.id !== 'toolkit');
+export const TOGGLEABLE = DOCK_DEFS.filter((d) => d.id !== 'toolkit' && d.id !== 'status');
 
 export type DockPrefs = Record<string, boolean>;
 
@@ -93,6 +96,7 @@ export interface Dock {
 export function mountDock(o: { onToolkit: () => void; onPresence?: (present: boolean) => void }): Dock {
   const clicks: Record<string, (el: HTMLElement) => void> = {
     account: (el) => openSwitcher(el),
+    status: (el) => toggleStatusPopover(el),
     unanswered: () => openOverlay('analytics', 'unanswered'),
     autoreply: () => openOverlay('autoreply'),
     crm: () => openOverlay('crm'),
@@ -109,7 +113,8 @@ export function mountDock(o: { onToolkit: () => void; onPresence?: (present: boo
   const emit = () => subs.forEach((f) => { try { f(); } catch { /* ignore */ } });
 
   const specs: NavItemSpec[] = DOCK_DEFS.map((d) => ({ ...d, onClick: clicks[d.id] }));
-  const nav = mountNavItems(specs, (p) => { o.onPresence?.(p); emit(); });
+  let applyStatusEl: (() => void) | null = null;
+  const nav = mountNavItems(specs, (p) => { o.onPresence?.(p); applyStatusEl?.(); emit(); });
   const h = nav.handles;
 
   const view: Record<string, Pick<DockView, 'badge' | 'badgeColor' | 'dot' | 'dotColor' | 'hidden'>> = {};
@@ -168,6 +173,24 @@ export function mountDock(o: { onToolkit: () => void; onPresence?: (present: boo
   };
   try { applyBlur(getBlurState()); onBlurState(applyBlur); } catch { /* ignore */ }
 
+  // run-mode status: colored dot (+ pulse while working) and tooltip from the live indicator
+  ensureNavPulseStyle();
+  try {
+    let cur: Indicator | null = null;
+    applyStatusEl = () => {
+      if (!cur) return;
+      const c = levelColor(cur);
+      view.status.dot = true; view.status.dotColor = c;
+      h.status.setActive(true, c);
+      const el = h.status.el;
+      if (el) {
+        if (cur.level === 'working') el.setAttribute('data-wwt-pulse', '1'); else el.removeAttribute('data-wwt-pulse');
+        el.querySelector('button')?.setAttribute('title', levelTooltip(cur));
+      }
+    };
+    onIndicator((i) => { cur = i; applyStatusEl?.(); emit(); });
+  } catch { /* ignore */ }
+
   // counts (every 30s, only while the tab is visible; one cheap background query each)
   let busy = false;
   const poll = async () => {
@@ -175,7 +198,7 @@ export function mountDock(o: { onToolkit: () => void; onPresence?: (present: boo
     busy = true;
     try {
       const c = parseCounts(await chrome.runtime.sendMessage({ kind: 'ui:counts' }));
-      if (c) setBadge('unanswered', c.unanswered > 0 ? c.unanswered : null, c.urgent > 0 ? '#d92d20' : '#667781');
+      if (c) setBadge('unanswered', c.unanswered > 0 ? c.unanswered : null, c.urgent > 0 ? '#d9665c' : '#8a9a93');
     } catch { /* background asleep / context invalidated */ } finally { busy = false; }
   };
   setTimeout(() => void poll(), 3000);

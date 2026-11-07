@@ -1,4 +1,5 @@
 import { call } from './bridge';
+import { isEngineOn, reportHealth } from './engine-health';
 import { phoneFromChatId } from '../shared/crm-logic';
 import type { Interaction, MsgEvent, TrackMsg } from '../shared/analytics-types';
 import type { ActivityScanResult, PingResult } from '../shared/messages';
@@ -22,8 +23,9 @@ export function mountTracker(): void {
     busy = true;
     try {
       if (!chrome.runtime?.id) return stop();
+      if (!isEngineOn('tracker')) { reportHealth('tracker', { state: 'mati', detail: 'Dimatikan atau dijeda' }); return; }
       const p = await call<PingResult>({ type: 'ping' }, 5000);
-      if (!p.accountId || !p.store) return;
+      if (!p.accountId || !p.store) { reportHealth('tracker', { state: 'siaga', detail: 'Menunggu WhatsApp siap' }); return; }
       const acc = p.accountId;
       const res = await call<ActivityScanResult>({ type: 'activity:scan' }, 30_000);
       const events: MsgEvent[] = [];
@@ -46,6 +48,7 @@ export function mountTracker(): void {
           partialHistory: true, // WA only exposes what is loaded; "first" may not be the true first
         });
       }
+      reportHealth('tracker', { state: 'jalan', detail: events.length ? `Mencatat ${events.length} aktivitas baru` : 'Memantau aktivitas chat' });
       if (!events.length) return;
       // Batch by events; interactions go with the first batch (background recomputes counts from the events table).
       for (let i = 0; i < events.length; i += BATCH) {
@@ -60,6 +63,7 @@ export function mountTracker(): void {
       if (events.length > BATCH) await chrome.runtime.sendMessage({ kind: 'track:put', events: [], interactions } satisfies TrackMsg);
     } catch (e) {
       if (!chrome.runtime?.id || /context invalidated/i.test(String(e))) stop(); // else adapter not ready, retry next tick
+      else reportHealth('tracker', { state: 'siaga', detail: 'Menunggu WhatsApp siap' });
     } finally { busy = false; }
   }
   function onVis() { if (document.visibilityState === 'visible') void scan(); }

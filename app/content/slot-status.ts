@@ -4,6 +4,16 @@ import type { PingResult } from '../shared/messages';
 import { closeOverlay } from './overlay';
 import { currentSlotId, purgeSlotData, switchTo } from './switcher';
 import { ping } from './sync';
+import { isEngineOn, reportHealth } from './engine-health';
+
+const HEALTH_OF: Record<SlotState, { state: 'jalan' | 'siaga' | 'error'; detail: string }> = {
+  online: { state: 'jalan', detail: 'WhatsApp tersambung' },
+  qr: { state: 'error', detail: 'WhatsApp belum login (scan QR di HP)' },
+  'logged-out': { state: 'error', detail: 'WhatsApp sudah keluar, login ulang' },
+  offline: { state: 'error', detail: 'WhatsApp offline atau internet putus' },
+  loading: { state: 'siaga', detail: 'WhatsApp sedang memuat' },
+  unknown: { state: 'siaga', detail: 'Menunggu WhatsApp Web siap' },
+};
 
 /**
  * Live status of the slot held by THIS tab + executor for background requests (holds / purge / switch)
@@ -88,12 +98,14 @@ export function mountSlotStatus(): void {
     const now = Date.now();
     if (!force && now - lastCheck < 1000) return;
     lastCheck = now;
+    if (!isEngineOn('accountStatus')) { reportHealth('accountStatus', { state: 'mati', detail: 'Dimatikan atau dijeda' }); return; }
     busy = true;
     try {
       const dom = detectDom();
       let p: PingResult | null = null;
       if (!(dom.qr && !dom.chatList)) { try { p = await ping(); } catch { p = null; } }
       const state = decideState(dom, p, navigator.onLine);
+      reportHealth('accountStatus', { ...HEALTH_OF[state], code: state, ready: !!p?.store });
       if (!force && last && last.state === state && Date.now() - last.at < HEARTBEAT_MS) return;
       last = { state, at: Date.now() };
       const msg: SlotMsg = { kind: 'slot:status', id: sid, state, ts: Date.now(), accountId: p?.accountId ?? null, unread: unreadFromTitle(document.title) };

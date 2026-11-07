@@ -2,6 +2,7 @@
 import type { DateRange, DayStat, Interaction, MsgEvent, Summary, UnansweredRow } from '../analytics-types';
 import { formatDuration } from '../analytics-logic';
 import type { LeadIntel } from '../lead-intel-logic';
+import type { Stats } from '../stats-logic';
 
 const DAY = 86400e3;
 export const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
@@ -119,8 +120,8 @@ export function buildKpis(s: Summary, prev: Summary | null, unansweredCount: num
 
 // ---------- the model ----------
 
-export interface ReportSections { kpi: boolean; charts: boolean; heatmap: boolean; unanswered: boolean; hot: boolean; interactions: boolean }
-export const ALL_SECTIONS: ReportSections = { kpi: true, charts: true, heatmap: true, unanswered: true, hot: true, interactions: false };
+export interface ReportSections { kpi: boolean; charts: boolean; heatmap: boolean; unanswered: boolean; hot: boolean; interactions: boolean; stats?: boolean }
+export const ALL_SECTIONS: ReportSections = { kpi: true, charts: true, heatmap: true, unanswered: true, hot: true, interactions: false, stats: true };
 export type Orientation = 'portrait' | 'landscape';
 
 export interface ReportModel {
@@ -132,6 +133,7 @@ export interface ReportModel {
   heatmap: number[][]; heatMax: number;
   unanswered: UnansweredRow[]; hot: LeadIntel[]; interactions: Interaction[];
   accountNames: Map<string, string>;
+  stats?: Stats;
   note: string;
 }
 
@@ -139,6 +141,7 @@ export interface ModelInput {
   summary: Summary; prev: Summary | null; unanswered: UnansweredRow[]; hot: LeadIntel[]; interactions: Interaction[];
   events: MsgEvent[]; includeGroups: boolean; accountNames: Map<string, string>; accountId: string;
   title: string; subtitle: string; business: string; sections: ReportSections; now: number;
+  stats?: Stats;
 }
 
 export function accountLabelOf(accountId: string, names: Map<string, string>): string {
@@ -153,7 +156,7 @@ export function buildReportModel(i: ModelInput): ReportModel {
     period: periodLabel(i.summary.range), accountLabel: accountLabelOf(i.accountId, i.accountNames), generatedAt: i.now,
     sections: i.sections, kpis: buildKpis(i.summary, i.prev, i.unanswered.length),
     bucketUnit: unit, buckets, heatmap: grid, heatMax: max,
-    unanswered: i.unanswered, hot: i.hot, interactions: i.interactions, accountNames: i.accountNames, note: HONEST_NOTE,
+    unanswered: i.unanswered, hot: i.hot, interactions: i.interactions, accountNames: i.accountNames, stats: i.stats, note: HONEST_NOTE,
   };
 }
 

@@ -1,6 +1,6 @@
 /** In-page modal overlay (closed shadow DOM) that frames extension pages over WhatsApp Web. */
 import { STORE_KEY, clampGeo, clampMove, defaultGeo, keyAdjust, maximizedGeo, parseStore, presetGeo, resizeEdge, type Edge, type Geo, type SizePreset } from '../shared/overlay-geometry';
-export type OverlayPage = 'dashboard' | 'crm' | 'templates' | 'analytics' | 'autoreply' | 'blast' | 'pos' | 'groups' | 'presets';
+export type OverlayPage = 'dashboard' | 'crm' | 'templates' | 'analytics' | 'autoreply' | 'blast' | 'pos' | 'groups' | 'presets' | 'quickstart';
 const PAGES: { id: OverlayPage; label: string; d: string }[] = [
   { id: 'dashboard', label: 'Hub Akun', d: '<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>' },
   { id: 'crm', label: 'CRM', d: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.5 3.2-5.5 6.5-5.5s5.9 2 6.5 5.5M17 11a3 3 0 1 0 0-6M18.5 14.7c1.8.6 3 2.3 3.3 5"/>' },
@@ -10,35 +10,36 @@ const PAGES: { id: OverlayPage; label: string; d: string }[] = [
   { id: 'pos', label: 'POS', d: '<path d="M3 4h2l2.4 11h10.2l2-8H6.2"/><circle cx="9" cy="20" r="1.2"/><circle cx="17" cy="20" r="1.2"/>' },
   { id: 'groups', label: 'Ekstrak Grup', d: '<circle cx="8" cy="8" r="3"/><path d="M2 20c.5-3 2.7-5 6-5s5.5 2 6 5M16 11a3 3 0 1 0 0-6M17 15c2.3.3 4 2 4.5 5"/>' },
   { id: 'presets', label: 'Preset Industri', d: '<path d="M12 3l2.1 5.4L20 10l-5.9 1.6L12 17l-2.1-5.4L4 10l5.9-1.6L12 3Z"/>' },
+  { id: 'quickstart', label: 'Mulai cepat', d: '<path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/>' },
   { id: 'analytics', label: 'Analitik', d: '<path d="M4 20V4M4 20h16"/><path d="M8 16v-4M12 16V8M16 16v-6"/>' },
 ];
-const TITLES: Record<OverlayPage, string> = { dashboard: 'Hub Akun', crm: 'CRM', templates: 'Template', analytics: 'Analitik', autoreply: 'Auto-reply', blast: 'Blast & Jadwal', pos: 'POS', groups: 'Ekstrak Grup', presets: 'Preset Industri' };
+const TITLES: Record<OverlayPage, string> = { dashboard: 'Hub Akun', crm: 'CRM', templates: 'Template', analytics: 'Analitik', autoreply: 'Auto-reply', blast: 'Blast & Jadwal', pos: 'POS', groups: 'Ekstrak Grup', presets: 'Preset Industri', quickstart: 'Mulai cepat' };
 const LOAD_TIMEOUT = 5000;
 
 const CSS = `
 :host{all:initial}
 *{box-sizing:border-box}
-.bd{--bg:#fff;--fg:#111b21;--mut:#667781;--bd:#e2e8ea;--hov:rgba(18,140,126,.1);--g:#128c7e;
- position:fixed;inset:0;z-index:2147483600;background:rgba(11,20,26,.28);
+.bd{--bg:#f6f8f7;--fg:#26332e;--mut:#66756f;--bd:#e3e9e6;--hov:rgba(63,174,107,.12);--g:#3fae6b;--gfg:#fff;--sh:0 18px 48px rgba(38,51,46,.16);
+ position:fixed;inset:0;z-index:2147483600;background:rgba(38,51,46,.18);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
  font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--fg);opacity:0;transition:opacity .18s ease}
-.bd.dark{--bg:#111b21;--fg:#e9edef;--mut:#8696a0;--bd:#26343c;--hov:rgba(37,211,102,.14);--g:#25d366;background:rgba(0,0,0,.4)}
+.bd.dark{--bg:#141b18;--fg:#dfe8e3;--mut:#9aaaa3;--bd:#27322d;--hov:rgba(88,196,135,.14);--g:#58c487;--gfg:#10231a;--sh:0 18px 48px rgba(0,0,0,.35);background:rgba(10,16,13,.32)}
 .bd.in{opacity:1}
-.card{position:absolute;display:flex;flex-direction:column;background:var(--bg);border:1px solid var(--bd);border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.4);transform:translateY(8px) scale(.985);transition:transform .2s ease;outline:none}
+.card{position:absolute;display:flex;flex-direction:column;background:var(--bg);border:1px solid var(--bd);border-radius:14px;overflow:hidden;box-shadow:var(--sh);transform:translateY(8px) scale(.985);transition:transform .2s ease;outline:none}
 .card.max{border-radius:0}
-.card:focus-visible{box-shadow:0 0 0 2px var(--g),0 20px 60px rgba(0,0,0,.4)}
+.card:focus-visible{box-shadow:0 0 0 2px var(--g),var(--sh)}
 .bd.in .card{transform:none}
 .bd.busy iframe{pointer-events:none}.bd.busy{user-select:none}
 header{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--bd);flex:none;cursor:grab;touch-action:none;position:relative}
 .bd.busy header{cursor:grabbing}
 .card.max header{cursor:default}
-.mk{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#128c7e,#25d366);display:grid;place-items:center;color:#fff;flex:none}
+.mk{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#58c487,#3fae6b);display:grid;place-items:center;color:#fff;flex:none}
 h2{margin:0;font-size:15px;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 button{font:inherit;color:inherit;cursor:pointer}
 .hb{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border:1px solid var(--bd);background:transparent;border-radius:9px;flex:none}
 .ib{width:32px;padding:0;justify-content:center}
 .hb:hover,.rail button:hover,.menu button:hover{background:var(--hov)}
 button:focus-visible{outline:2px solid var(--g);outline-offset:2px}
-.menu{position:absolute;right:92px;top:46px;z-index:5;min-width:160px;background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:4px;box-shadow:0 10px 30px rgba(0,0,0,.3);display:flex;flex-direction:column}
+.menu{position:absolute;right:92px;top:46px;z-index:5;min-width:160px;background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:4px;box-shadow:var(--sh);display:flex;flex-direction:column}
 .menu button{border:0;background:transparent;text-align:left;padding:8px 10px;border-radius:7px}
 .menu hr{border:0;border-top:1px solid var(--bd);margin:4px 0;width:100%}
 .body{flex:1;display:flex;min-height:0;min-width:0}
@@ -54,7 +55,7 @@ iframe.h{visibility:hidden}
 .sk i:nth-child(1){width:35%;height:26px}.sk i:nth-child(3){width:80%}.sk i:nth-child(4){height:120px}
 @keyframes sh{to{background-position:-200% 0}}
 .fb{position:absolute;inset:0;display:grid;place-content:center;gap:14px;text-align:center;padding:24px;justify-items:center}
-.fb button{background:var(--g);color:#fff;border:0;height:38px;padding:0 16px;border-radius:10px;font-weight:600}
+.fb button{background:var(--g);color:var(--gfg);border:0;height:38px;padding:0 16px;border-radius:10px;font-weight:600}
 .rz{position:absolute;z-index:4;touch-action:none}
 .card.max .rz{display:none}
 .rz[data-e=n]{top:0;left:14px;right:14px;height:8px;cursor:ns-resize}

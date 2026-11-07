@@ -15,7 +15,7 @@ export default defineManifest({
   permissions: ['storage', 'alarms', 'unlimitedStorage', 'notifications'],
   host_permissions: ['https://web.whatsapp.com/*'],
   web_accessible_resources: [
-    { resources: ['dashboard/index.html', 'crm/index.html', 'templates/index.html', 'analytics/index.html', 'autoreply/index.html', 'groups/index.html', 'pos/index.html', 'blast/index.html', 'presets/index.html', 'assets/*'], matches: ['https://web.whatsapp.com/*'] },
+    { resources: ['dashboard/index.html', 'crm/index.html', 'templates/index.html', 'analytics/index.html', 'autoreply/index.html', 'groups/index.html', 'pos/index.html', 'blast/index.html', 'presets/index.html', 'quickstart/index.html', 'assets/*'], matches: ['https://web.whatsapp.com/*'] },
   ],
   content_scripts: [
     { matches: ['https://web.whatsapp.com/*'], js: ['content/index.ts'], run_at: 'document_idle' },

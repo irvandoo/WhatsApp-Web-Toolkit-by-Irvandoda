@@ -10,11 +10,15 @@ import { ExportDialog } from './ExportDialog';
 import { hotLeads } from '../shared/lead-intel-logic';
 import { useLeadIntel } from '../shared/lead-intel-live';
 import { Unanswered } from './Unanswered';
+import { computeStats } from '../shared/stats-logic';
+import { StatHighlights, StatsView } from './Stats';
+import { Icon, SectionTitle } from './Icons';
+import { Spark } from './Viz';
 import { fmtNum } from './util';
 
 const RANGES: [RangeKey, string][] = [['today', 'Hari ini'], ['week', 'Minggu'], ['month', 'Bulan'], ['year', 'Tahun'], ['all', 'Semua'], ['custom', 'Custom']];
-type Tab = 'ringkasan' | 'belum' | 'hot' | 'laporan';
-const HASH_TAB: Record<string, Tab> = { ringkasan: 'ringkasan', unanswered: 'belum', belum: 'belum', hot: 'hot', laporan: 'laporan' };
+type Tab = 'ringkasan' | 'statistik' | 'belum' | 'hot' | 'laporan';
+const HASH_TAB: Record<string, Tab> = { ringkasan: 'ringkasan', statistik: 'statistik', stats: 'statistik', unanswered: 'belum', belum: 'belum', hot: 'hot', laporan: 'laporan' };
 const tabFromHash = (): Tab => HASH_TAB[location.hash.replace(/^#/, '')] ?? 'ringkasan';
 const NO_EVENTS: MsgEvent[] = [];
 const dateVal = (ts: number) => { const d = new Date(ts); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
@@ -22,11 +26,11 @@ const startOf = (s: string) => { const [y, m, d] = s.split('-').map(Number); ret
 
 function Delta({ cur, prev, invert }: { cur: number; prev: number | null; invert?: boolean }) {
   if (prev == null) return null;
-  if (prev === 0) return <span className="delta flat">{cur === 0 ? '0%' : 'baru'} vs periode lalu</span>;
+  if (prev === 0) return <span className="delta flat">{cur === 0 ? '0%' : 'baru'}</span>;
   const pct = Math.round(((cur - prev) / prev) * 100);
   const good = invert ? pct < 0 : pct > 0;
   const cls = pct === 0 ? 'flat' : good ? 'up' : 'down';
-  return <span className={`delta ${cls}`}>{pct > 0 ? '▲' : pct < 0 ? '▼' : '='} {Math.abs(pct)}% vs periode lalu</span>;
+  return <span className={`delta ${cls}`} title="dibanding periode lalu"><Icon name={pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat'} />{Math.abs(pct)}%<span className="sr"> vs periode lalu</span></span>;
 }
 
 export function App() {
@@ -74,32 +78,40 @@ export function App() {
     return hotLeads([...intel.values()].filter((l) => (!acc || l.accountId === acc) && (groups || !groupKeys.has(l.key))));
   }, [intel, interactions, acc, groups]);
 
+  const stats = useMemo(() => computeStats({ events, interactions, summary, prev, accountId: acc || undefined, includeGroups: groups, accountNames }),
+    [events, interactions, summary, prev, acc, groups, accountNames]);
+
   const hasData = interactions.length > 0 || events.length > 0;
-  const kpis: { l: string; v: string; cur: number; prev: number | null; invert?: boolean }[] = [
-    { l: 'WA Baru', v: fmtNum(summary.newLeads), cur: summary.newLeads, prev: prev?.newLeads ?? null },
-    { l: 'Follow-up', v: fmtNum(summary.followUps), cur: summary.followUps, prev: prev?.followUps ?? null },
-    { l: 'Pesan masuk', v: fmtNum(summary.inbound), cur: summary.inbound, prev: prev?.inbound ?? null },
-    { l: 'Pesan keluar', v: fmtNum(summary.outbound), cur: summary.outbound, prev: prev?.outbound ?? null },
-    { l: 'Chat aktif', v: fmtNum(summary.activeChats), cur: summary.activeChats, prev: prev?.activeChats ?? null },
-    { l: 'Belum dibalas', v: fmtNum(unanswered.length), cur: unanswered.length, prev: null },
+  const series = (f: (d: (typeof summary.days)[number]) => number) => summary.days.map(f);
+  const kpis: { l: string; v: string; cur: number; prev: number | null; invert?: boolean; icon: string; tone: string; spark?: number[]; color?: string }[] = [
+    { l: 'WA Baru', v: fmtNum(summary.newLeads), cur: summary.newLeads, prev: prev?.newLeads ?? null, icon: 'userPlus', tone: 'c-new', spark: series((d) => d.newLeads), color: 'var(--c-new)' },
+    { l: 'Follow-up', v: fmtNum(summary.followUps), cur: summary.followUps, prev: prev?.followUps ?? null, icon: 'repeat', tone: 'c-fu', spark: series((d) => d.followUps), color: 'var(--c-fu)' },
+    { l: 'Pesan masuk', v: fmtNum(summary.inbound), cur: summary.inbound, prev: prev?.inbound ?? null, icon: 'inbox', tone: 'c-in', spark: series((d) => d.inbound), color: 'var(--c-in)' },
+    { l: 'Pesan keluar', v: fmtNum(summary.outbound), cur: summary.outbound, prev: prev?.outbound ?? null, icon: 'send', tone: 'c-out', spark: series((d) => d.outbound), color: 'var(--c-out)' },
+    { l: 'Chat aktif', v: fmtNum(summary.activeChats), cur: summary.activeChats, prev: prev?.activeChats ?? null, icon: 'chat', tone: '', spark: series((d) => d.inbound + d.outbound), color: 'var(--accent)' },
+    { l: 'Belum dibalas', v: fmtNum(unanswered.length), cur: unanswered.length, prev: null, icon: 'alert', tone: '' },
     { l: 'Rata-rata respon pertama', v: summary.avgFirstResponseMs == null ? '-' : formatDuration(summary.avgFirstResponseMs), cur: summary.avgFirstResponseMs ?? 0,
-      prev: summary.avgFirstResponseMs != null && prev?.avgFirstResponseMs != null ? prev.avgFirstResponseMs : null, invert: true },
+      prev: summary.avgFirstResponseMs != null && prev?.avgFirstResponseMs != null ? prev.avgFirstResponseMs : null, invert: true, icon: 'clock', tone: '' },
   ];
 
   const fill = tab === 'belum' && hasData;
   return (
     <div className="page">
-      <h1>Analitik - WhatsApp Web Toolkit by Irvandoda</h1>
+      <div className="head">
+        <span className="logo"><Icon name="logo" /></span>
+        <h1>Analitik<small>WhatsApp Web Toolkit by Irvandoda</small></h1>
+      </div>
       <div className="bar">
         <div className="seg" role="group" aria-label="Rentang waktu">
           {RANGES.map(([k, l]) => <button key={k} className={key === k ? 'on' : ''} aria-pressed={key === k} onClick={() => setKey(k)}>{l}</button>)}
         </div>
         {key === 'custom' && (
-          <span className="seg">
+          <span className="seg dates">
             <input type="date" aria-label="Dari tanggal" value={cFrom} max={cTo} onChange={(e) => setCFrom(e.target.value)} />
             <input type="date" aria-label="Sampai tanggal" value={cTo} min={cFrom} onChange={(e) => setCTo(e.target.value)} />
           </span>
         )}
+        <span className="sp" />
         <select aria-label="Akun" value={acc} onChange={(e) => setAcc(e.target.value)}>
           <option value="">Semua akun</option>
           {accounts.map((a) => <option key={a.id} value={a.id}>{a.name || a.id}</option>)}
@@ -109,7 +121,7 @@ export function App() {
       </div>
 
       <div className="tabs" role="tablist" aria-label="Bagian analitik">
-        {([['ringkasan', 'Ringkasan'], ['belum', `Belum Dibalas (${unanswered.length})`], ['hot', 'Lead Panas'], ['laporan', 'Laporan']] as [Tab, string][]).map(([k, l]) => (
+        {([['ringkasan', 'Ringkasan'], ['statistik', 'Statistik'], ['belum', `Belum Dibalas (${unanswered.length})`], ['hot', 'Lead Panas'], ['laporan', 'Laporan']] as [Tab, string][]).map(([k, l]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>
@@ -124,24 +136,29 @@ export function App() {
           <div className="kpis">
             {kpis.map((k) => (
               <div key={k.l} className="card kpi">
-                <div className="l">{k.l}</div>
+                <div className="top"><span className={`chipic ${k.tone}`}><Icon name={k.icon} /></span><span className="l">{k.l}</span></div>
                 <div className="v">{k.v}</div>
-                <Delta cur={k.cur} prev={k.prev} invert={k.invert} />
+                <div className="foot"><Delta cur={k.cur} prev={k.prev} invert={k.invert} />{k.spark && <Spark values={k.spark} color={k.color ?? 'var(--accent)'} label={`Tren harian ${k.l}`} />}</div>
               </div>
             ))}
           </div>
+          <StatHighlights stats={stats} onMore={() => setTab('statistik')} />
           <div className="grid2">
             <section className="card">
-              <h2>Tren lead dan pesan masuk</h2>
+              <SectionTitle icon="bars">Tren lead dan pesan</SectionTitle>
               <BarChart days={summary.days} range={range} />
             </section>
             <section className="card">
-              <h2>Aktivitas masuk (jam x hari)</h2>
+              <SectionTitle icon="grid">Aktivitas masuk (jam x hari)</SectionTitle>
               <Heatmap events={events} includeGroups={groups} />
             </section>
           </div>
           {range.key === 'all' && events.length > 50000 && <p className="muted">Menampilkan semua data ({fmtNum(events.length)} peristiwa); pilih rentang lebih sempit agar lebih ringan.</p>}
         </div>
+      )}
+
+      {tab === 'statistik' && hasData && (
+        <div role="tabpanel"><StatsView stats={stats} summary={summary} /></div>
       )}
 
       {tab === 'belum' && hasData && (
@@ -163,7 +180,7 @@ export function App() {
       </div>
 
       {exporting && (
-        <ExportDialog summary={summary} prev={prev} unanswered={unanswered} hot={hotScoped} interactions={scoped} events={events} includeGroups={groups}
+        <ExportDialog stats={stats} summary={summary} prev={prev} unanswered={unanswered} hot={hotScoped} interactions={scoped} events={events} includeGroups={groups}
           accountNames={accountNames} accountId={acc} now={now} onClose={() => setExporting(false)} onOther={() => { setExporting(false); setTab('laporan'); }} />
       )}
       {msg && <div className="toast" role="status">{msg}</div>}

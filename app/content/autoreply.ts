@@ -9,6 +9,8 @@ import {
   AR_GLOBAL_KEY, DEFAULT_AR_GLOBAL, type ArCtx, type ArGlobal, type ArLogEntry, type ArMsg, type ArRule, type InboxItem,
 } from '../shared/autoreply-types';
 import type { PingResult } from '../shared/messages';
+import { setEngine } from '../shared/runmode';
+import { isEngineOn, reportHealth } from './engine-health';
 import type { TplVars } from '../shared/template-engine';
 
 const POLL_MS = 5000;
@@ -62,6 +64,7 @@ export async function setAutoReplyGlobal(patch: Partial<ArGlobal>): Promise<void
   const next: ArGlobal = { ...global, ...patch };
   if (!IS_FULL) next.autoSend = false;
   await chrome.storage.local.set({ [AR_GLOBAL_KEY]: next });
+  if (patch.enabled === true) void setEngine('autoReply', true); // the user explicitly arms replying; it is never armed otherwise
 }
 
 function applyGlobal(v: unknown) {
@@ -149,7 +152,7 @@ function schedule(item: InboxItem, chatKey: string, rule: ArRule, text: string, 
       if (!alive()) return;
       await loadRules();
       const live = rules.find((r) => r.id === rule.id);
-      if (!global.enabled || !getAutoReplyState().autoSend) return void (await skipWith('Auto-kirim dimatikan sebelum terkirim'));
+      if (!global.enabled || !getAutoReplyState().autoSend || !isEngineOn('autoReply')) return void (await skipWith('Auto-kirim dimatikan/dijeda sebelum terkirim'));
       if (!live || !live.enabled || live.mode !== 'auto') return void (await skipWith('aturan dinonaktifkan sebelum terkirim'));
       const fresh = await freshItem(item.chatId);
       if (!fresh || fresh.msgId !== item.msgId) return void (await skipWith('ada pesan baru, dibatalkan'));
@@ -240,21 +243,29 @@ async function flushDrafts() {
   }
 }
 
+/** Replies sent in the last hour (for the status indicator). */
+const logCountSent = (): number => log.filter((e) => e.action === 'sent' && Date.now() - e.ts < 3_600_000).length;
 let busy = false;
+let gateOff = false;
 async function tick() {
   if (busy) return;
   busy = true;
   try {
     if (!alive()) return teardown();
-    if (!global.enabled) return;
+    if (!global.enabled) { reportHealth('autoReply', { state: 'mati', detail: 'Belum diaktifkan' }); return; }
+    if (!isEngineOn('autoReply')) { gateOff = true; reportHealth('autoReply', { state: 'mati', detail: 'Dimatikan atau dijeda' }); return; }
+    if (gateOff) { gateOff = false; sinceTs = Date.now(); handled.clear(); } // never answer what arrived while paused
     await flushDrafts();
-    if (!rules.some((r) => r.enabled)) return;
+    if (!rules.some((r) => r.enabled)) { reportHealth('autoReply', { state: 'siaga', detail: 'Belum ada aturan aktif' }); return; }
     const p = await call<PingResult>({ type: 'ping' }, 5000);
-    if (!p.accountId || !p.store) return;
+    if (!p.accountId || !p.store) { reportHealth('autoReply', { state: 'siaga', detail: 'Menunggu WhatsApp siap' }); return; }
     accountId = p.accountId;
     const wantGroups = rules.some((r) => r.enabled && scopeOf(r) !== 'personal');
     const items = await call<InboxItem[]>({ type: 'inbox:poll', sinceTs, includeGroups: wantGroups }, 15_000);
+    if (items.length) reportHealth('autoReply', { state: 'kerja', detail: `Memproses ${items.length} pesan masuk`, total: items.length });
     for (const it of items) await handleItem(it);
+    const sentN = logCountSent();
+    reportHealth('autoReply', { state: 'jalan', detail: sentN ? `Memantau pesan masuk. Terkirim sesi ini: ${sentN}` : 'Memantau pesan masuk' });
   } catch (e) {
     if (/context invalidated/i.test(String(e))) teardown();
   } finally { busy = false; }

@@ -11,6 +11,8 @@ const CSS = `
   }
 `;
 
+import { isEngineOn, onRunChange, reportHealth } from './engine-health';
+
 export function installMemorySaver(): void {
   if (document.getElementById(STYLE_ID)) return;
   const el = document.createElement('style');
@@ -19,8 +21,15 @@ export function installMemorySaver(): void {
   document.head.appendChild(el);
 
   // Enable saver mode while tab is hidden, disable when visible.
-  const sync = () => { document.documentElement.dataset.wwtSaver = document.hidden ? '1' : '0'; };
+  const sync = () => {
+    const on = isEngineOn('memory');
+    (el as HTMLStyleElement).disabled = !on;
+    document.documentElement.dataset.wwtSaver = on && document.hidden ? '1' : '0';
+    reportHealth('memory', on ? { state: 'jalan', detail: 'Hemat memori aktif' } : { state: 'mati', detail: 'Dimatikan atau dijeda' });
+  };
   document.addEventListener('visibilitychange', sync);
+  onRunChange(sync);
+  setInterval(sync, 60_000);
   sync();
 }
 

@@ -1,15 +1,17 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
+import '../shared/ui/theme.css';
 import '../shared/ui/ui.css';
 import './popup.css';
 import { CREDIT } from '../shared/credit';
 import { db } from '../shared/db';
 import { isOnline, useAccounts, useNow } from '../shared/ui/hooks';
 import { useLiveCount } from './live';
+import { RunStatus } from './RunStatus';
 
 const WA = 'https://web.whatsapp.com/*';
 const open = (p: string) => { void chrome.tabs.create({ url: chrome.runtime.getURL(p) }); window.close(); };
-type Page = 'dashboard' | 'crm' | 'templates' | 'analytics';
+type Page = 'dashboard' | 'crm' | 'templates' | 'analytics' | 'quickstart';
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 async function focusTab(tab: chrome.tabs.Tab) {
   if (tab.id != null) await chrome.tabs.update(tab.id, { active: true });
@@ -102,6 +104,7 @@ function Popup() {
         <div className="grow"><h1>WhatsApp Web Toolkit</h1><small>by Irvandoda</small></div>
         <span className={'pill ' + st[0]} role="status"><i />{st[1]}</span>
       </header>
+      <RunStatus onQuickStart={() => void openModule('quickstart')} />
       <section className="kpis" aria-label="Ringkasan">
         <div className="kpi"><b>{online}</b><span>Akun online</span></div>
         <div className="kpi"><b>{unread}</b><span>Belum dibaca</span></div>

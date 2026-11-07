@@ -2,6 +2,7 @@
 import type { Summary, UnansweredRow } from '../analytics-types';
 import { formatDuration } from '../analytics-logic';
 import { MOMENTUM_LABEL, TEMP_LABEL, type LeadIntel } from '../lead-intel-logic';
+import { statsRows, type Stats } from '../stats-logic';
 import { ALL_SECTIONS, BRAND, buildBuckets, buildKpis, fmtDateTime, fmtNum, periodLabel, type Bucket, type ReportSections } from './model';
 
 export interface WaTextOpts {
@@ -17,6 +18,8 @@ export interface WaTextOpts {
   heatmap?: number[][];
   /** max characters per part (WhatsApp allows ~65k, but short messages read better); default 4000 */
   maxPartLength?: number;
+  /** computed statistics (see stats-logic); included when sections.stats is on */
+  stats?: Stats;
 }
 export interface WaReport { parts: string[]; text: string }
 
@@ -83,6 +86,15 @@ function heatSection(grid: number[][]): string | null {
     + `• Hari: ${topD.map(([d, v]) => `${DN[d]} (${fmtNum(v)})`).join(', ')}`;
 }
 
+function statsSection(st: Stats): string | null {
+  if (st.empty) return null;
+  const pick = ['Median balasan pertama', 'Lead baru dibalas', 'Lead dibalas < 1 jam', 'Jam tersibuk', 'Hari tersibuk', 'Rasio masuk:keluar'];
+  const rows = statsRows(st).filter(([k]) => pick.includes(k));
+  let out = '*Statistik*\n' + mono(rows.map(([k, v]) => k.padEnd(22) + v.padStart(MONO_W - 22)));
+  if (st.insights.length) out += '\n' + st.insights.slice(0, 4).map((x) => `• ${safeWa(x)}`).join('\n');
+  return out;
+}
+
 function unansweredSection(rows: UnansweredRow[], topN: number): string {
   const c = { urgent: 0, high: 0, normal: 0, low: 0 };
   for (const r of rows) c[r.priority]++;
@@ -144,6 +156,7 @@ export function buildWaReportText(summary: Summary, unanswered: UnansweredRow[],
   if (S.kpi) secs.push(kpiSection(summary, opts.prev ?? null, unanswered.length));
   if (S.charts) { const t = trendSection(summary, 14); if (t) secs.push(t); }
   if (S.heatmap && opts.heatmap) { const h = heatSection(opts.heatmap); if (h) secs.push(h); }
+  if (S.stats && opts.stats) { const x = statsSection(opts.stats); if (x) secs.push(x); }
   if (S.unanswered) secs.push(unansweredSection(unanswered, topN));
   if (S.hot) secs.push(hotSection(hot, topN));
   secs.push(`_Data sebatas riwayat yang terlihat di WhatsApp Web._\n_${BRAND}_`);

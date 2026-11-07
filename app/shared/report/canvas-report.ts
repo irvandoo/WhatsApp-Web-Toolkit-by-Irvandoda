@@ -5,6 +5,7 @@
  */
 import { formatDuration } from '../analytics-logic';
 import { FOLLOW_LABEL, MOMENTUM_LABEL, TEMP_LABEL } from '../lead-intel-logic';
+import { statsRows } from '../stats-logic';
 import { BRAND, fmtDateTime, fmtNum, WD, WD_ORDER, type Orientation, type ReportModel } from './model';
 
 type Ctx = CanvasRenderingContext2D;
@@ -305,6 +306,9 @@ export function buildBlocks(m: ReportModel, mctx: Ctx, pageW: number, maxRows = 
   if (S.kpi) blocks.push(headingBlock('Ringkasan'), ...kpiBlocks(m, w));
   if (S.charts) blocks.push(headingBlock(`Grafik per ${m.bucketUnit}`), chartBlock(m));
   if (S.heatmap) blocks.push(headingBlock('Aktivitas masuk (jam x hari)'), heatmapBlock(m));
+  if (S.stats && m.stats && !m.stats.empty) {
+    blocks.push(headingBlock('Statistik'), ...statsRows(m.stats).map(([k, v]) => noteBlock(`${k}: ${v}`, mctx, w)), ...m.stats.insights.map((x) => noteBlock(`- ${x}`, mctx, w)));
+  }
   if (S.unanswered) {
     const rows = m.unanswered.slice(0, maxRows).map((r) => [
       r.name || '-', r.phone || '-', KIND[r.kind], { t: PRIO[r.priority], color: PRIO_COLOR[r.priority], bold: true }, formatDuration(r.waitingMs), fmtDateTime(r.waitingSinceTs),

@@ -126,13 +126,13 @@ function paint(el: HTMLElement, spec: NavItemSpec, st: ItemState): void {
     const n = get('data-wwt-badge');
     n.textContent = badgeText(st.badge as number | string);
     n.style.cssText = 'position:absolute;top:0;right:0;min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;border-radius:8px;' +
-      `background:${st.badgeColor ?? '#d92d20'};color:#fff;font:700 10px/16px system-ui,-apple-system,"Segoe UI",sans-serif;text-align:center;` +
+      `background:${st.badgeColor ?? '#d9665c'};color:#fff;font:700 10px/16px system-ui,-apple-system,"Segoe UI",sans-serif;text-align:center;` +
       `box-shadow:0 0 0 2px ${ring};pointer-events:none;font-variant-numeric:tabular-nums`;
   } else btn.querySelector('[data-wwt-badge]')?.remove();
   btn.setAttribute('aria-label', typeof st.badge === 'number' && st.badge > 0 ? `${spec.label} (${badgeText(st.badge)})` : spec.label);
   if (st.active) {
     const n = get('data-wwt-dot');
-    n.style.cssText = `position:absolute;bottom:2px;right:2px;width:9px;height:9px;border-radius:50%;background:${st.dotColor ?? '#25d366'};` +
+    n.style.cssText = `position:absolute;bottom:2px;right:2px;width:9px;height:9px;border-radius:50%;background:${st.dotColor ?? '#3fae6b'};` +
       `box-shadow:0 0 0 2px ${ring};pointer-events:none`;
   } else btn.querySelector('[data-wwt-dot]')?.remove();
 }

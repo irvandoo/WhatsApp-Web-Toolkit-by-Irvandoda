@@ -4,6 +4,7 @@ import { isBlockedTarget } from '../shared/outbox-logic';
 import type { NextItem, OutboxItem } from '../shared/outbox-types';
 import { call } from './bridge';
 import { sendSilent } from './send-settings';
+import { isEngineOn, reportHealth } from './engine-health';
 import { insertErrorText, insertIntoComposer, showToast } from './composer-insert';
 
 export interface OutboxState {
@@ -141,20 +142,32 @@ function showDraft(item: OutboxItem): void {
 }
 
 // ---------- loop ----------
+const health = (st: 'jalan' | 'kerja' | 'siaga' | 'mati' | 'error', detail: string, total?: number): void =>
+  reportHealth('outbox', { state: st, detail, done: state.sent + state.failed, failed: state.failed, total });
+
 async function tick(): Promise<void> {
   if (state.inFlight) return;
   if (!alive()) return teardown();
+  if (!isEngineOn('outbox')) { health('mati', 'Dimatikan atau dijeda'); return; }
   state.lastTickAt = Date.now();
   if (!IS_FULL && (box?.childElementCount ?? 0) >= MAX_CARDS) return;
   state.inFlight = true;
   try {
     state.killed = await killed();
-    if (state.killed) { state.lastReason = 'Dihentikan (Stop global)'; return; }
+    if (state.killed) { state.lastReason = 'Dihentikan (Stop global)'; health('mati', state.lastReason); return; }
     const r = (await chrome.runtime.sendMessage({ kind: 'ob:next', accountId: await accountId() })) as NextItem | undefined;
-    if (!r || !r.item) { state.lastReason = r?.reason ?? ''; return; }
+    if (!r || !r.item) {
+      state.lastReason = r?.reason ?? '';
+      health('jalan', state.drafts > 0 ? `${state.drafts} draf menunggu Anda` : state.lastReason || (state.sent ? `Terkirim ${state.sent}, gagal ${state.failed}` : 'Tidak ada antrean kirim'));
+      return;
+    }
     state.lastReason = '';
-    if (r.mode === 'auto') await sendAuto(r.item, !!r.campaign?.safety.checkRegistered);
-    else showDraft(r.item);
+    if (r.mode === 'auto') {
+      const total = r.campaign?.total;
+      health('kerja', `Mengirim ke ${r.item.name || '+' + r.item.phone}`, total);
+      await sendAuto(r.item, !!r.campaign?.safety.checkRegistered);
+      health('jalan', `Terkirim ${state.sent}, gagal ${state.failed}`, total);
+    } else { showDraft(r.item); health('jalan', `${state.drafts} draf menunggu Anda`); }
   } catch { /* worker asleep / context invalidated */ }
   finally { state.inFlight = false; }
 }

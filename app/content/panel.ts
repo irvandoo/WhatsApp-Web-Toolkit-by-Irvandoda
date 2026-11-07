@@ -6,6 +6,9 @@ import type { Account, RuntimeMsg, SessionMeta } from '../shared/messages';
 import { listChats, ping, syncAll, syncChat, type SyncProgress } from './sync';
 import { icon } from './panel-icons';
 import { PANEL_CSS } from './panel-style';
+import { FAB_DOT_CSS } from './status-style';
+import { levelColor, onIndicator, openQuickStart, renderItemRows, toggleStatusPopover } from './status';
+import { HONESTY_BG, HONESTY_RISK } from '../shared/runmode';
 import { DOCK_DEFS, TOGGLEABLE, loadDockPrefs, mountDock, saveDockPrefs, type DockView } from './dock';
 import { getBlurState, onBlurState, setBlur } from './privacy-blur';
 import { BLUR_MAX, BLUR_MIN, type BlurOptions } from '../shared/blur-logic';
@@ -15,6 +18,7 @@ type Props = Record<string, string>;
 
 const POS_KEY = 'wwt-fab-y';
 const TABS = [
+  { id: 'status', label: 'Status', ic: 'pulse' },
   { id: 'sync', label: 'Sync', ic: 'sync' },
   { id: 'mem', label: 'Memori', ic: 'memory' },
   { id: 'acc', label: 'Akun', ic: 'user' },
@@ -85,7 +89,8 @@ export function mountPanel(): void {
 
   // ---- FAB
   const badge = h('span', { class: 'badge', hidden: '' });
-  const fab = h('button', { class: 'fab', type: 'button', 'aria-label': `Buka ${CREDIT.product}`, 'aria-expanded': 'false', title: CREDIT.product }, icon('brand', 26), badge);
+  const stDot = h('span', { class: 'wst' });
+  const fab = h('button', { class: 'fab', type: 'button', 'aria-label': `Buka ${CREDIT.product}`, 'aria-expanded': 'false', title: CREDIT.product }, icon('brand', 26), badge, stDot);
 
   // ---- panel skeleton
   const pill = h('span', { class: 'pill bad' });
@@ -102,7 +107,7 @@ export function mountPanel(): void {
   const panel = h('div', { class: 'panel', role: 'dialog', 'aria-label': CREDIT.product }, header, nav, main, live);
   const dockEl = h('div', { class: 'dock', role: 'toolbar', 'aria-label': 'Modul', 'aria-orientation': 'vertical' });
   wrap.append(dockEl, fab, panel);
-  root.append(h('style', {}, PANEL_CSS), wrap);
+  root.append(h('style', {}, PANEL_CSS), h('style', {}, FAB_DOT_CSS), wrap);
   document.documentElement.appendChild(host);
 
   const say = (s: string) => { live.textContent = s; };
@@ -113,6 +118,25 @@ export function mountPanel(): void {
     return b;
   };
   const kv = (k: string, v: string) => { const val = h('span', {}, v); return { row: h('div', { class: 'kv' }, h('span', {}, k), val), val }; };
+
+  // ---- Status tab (live indicator, same data as the navbar item / popup)
+  const stTitle = h('b', {}, 'Memeriksa...');
+  const stDetail = h('p', {}, '');
+  const stList = h('div', {});
+  const bStatusPop = btn('Buka Status Otomatis', 'pulse', 'pri'), bQuick = btn('Panduan cepat', 'info');
+  bStatusPop.addEventListener('click', () => { close(); toggleStatusPopover(); });
+  bQuick.addEventListener('click', () => { close(); openQuickStart(); });
+  const secStatus = h('section', {},
+    h('div', { class: 'card' }, stTitle, stDetail), stList,
+    h('div', { class: 'row' }, bStatusPop, bQuick),
+    h('p', {}, HONESTY_BG), h('p', {}, HONESTY_RISK));
+  onIndicator((i) => {
+    stTitle.textContent = i.title; stDetail.textContent = i.detail;
+    renderItemRows(stList, i);
+    stDot.style.background = levelColor(i);
+    stDot.className = `wst${i.level === 'working' ? ' working' : ''}`;
+    stDot.title = `${i.title}. ${i.detail}`;
+  });
 
   // ---- Sync tab
   const bSync1 = btn('Sync chat terbuka', 'sync', 'pri'), bSyncAll = btn('Sync semua', 'sync'), bStop = btn('Stop', 'stop', 'dan');
@@ -200,7 +224,7 @@ export function mountPanel(): void {
       h('div', { class: 'kv' }, h('span', {}, 'Web'), link('irvandoda.web.id', CREDIT.web))),
     h('p', {}, 'Alat bantu independen, bukan produk resmi WhatsApp atau Meta.'));
 
-  const sections: Record<string, HTMLElement> = { sync: secSync, mem: secMem, acc: secAcc, mod: secMod, ses: secSes, abt: secAbt };
+  const sections: Record<string, HTMLElement> = { status: secStatus, sync: secSync, mem: secMem, acc: secAcc, mod: secMod, ses: secSes, abt: secAbt };
   const tabBtns: HTMLButtonElement[] = [];
   for (const t of TABS) {
     const tb = h('button', { class: 'tab', type: 'button', role: 'tab', id: `wwt-tab-${t.id}`, 'aria-controls': `wwt-sec-${t.id}`, 'aria-selected': 'false', tabindex: '-1' }, icon(t.ic, 18), t.label);
@@ -214,7 +238,7 @@ export function mountPanel(): void {
     s.hidden = true;
     main.append(s);
   }
-  let tab = 'sync';
+  let tab = 'status';
   function select(id: string) {
     tab = id;
     TABS.forEach((t, i) => {

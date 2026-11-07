@@ -1,6 +1,6 @@
 /** Lets content scripts (which cannot use chrome.tabs) ask the background to open an extension page. */
-export type UiOpenMsg = { kind: 'ui:open'; page: 'dashboard' | 'crm' | 'templates' | 'analytics' | 'autoreply' | 'blast' | 'pos' | 'groups' | 'presets' };
-const PAGES = new Set(['dashboard', 'crm', 'templates', 'analytics', 'autoreply', 'blast', 'pos', 'groups', 'presets']);
+export type UiOpenMsg = { kind: 'ui:open'; page: 'dashboard' | 'crm' | 'templates' | 'analytics' | 'autoreply' | 'blast' | 'pos' | 'groups' | 'presets' | 'quickstart' };
+const PAGES = new Set(['dashboard', 'crm', 'templates', 'analytics', 'autoreply', 'blast', 'pos', 'groups', 'presets', 'quickstart']);
 
 export function installUiOpen(): void {
   chrome.runtime.onMessage.addListener((m: unknown, sender) => {

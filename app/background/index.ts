@@ -4,6 +4,7 @@ import type { RuntimeMsg } from '../shared/messages';
 import { handleAccounts, NOT_HANDLED } from './accounts';
 import { installSessions } from './sessions';
 import { installUiOpen } from './ui-open';
+import { installRunStatus } from './runstatus';
 import { handleCrm, isCrmMsg, registerCrmAlarms } from './crm';
 import { handleTemplates, isTplMsg, seedTemplates } from './templates';
 import { handleTrack, isTrackMsg } from './track';
@@ -23,6 +24,7 @@ installSessions();
 installUiOpen();
 registerCrmAlarms();
 registerOutboxAlarms();
+installRunStatus();
 
 chrome.runtime.onInstalled.addListener(() => {
   console.info(`${CREDIT.product} installed — ${CREDIT.web}`);

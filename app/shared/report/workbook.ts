@@ -3,6 +3,7 @@ import type { Summary } from '../analytics-types';
 import { formatDuration } from '../analytics-logic';
 import { FOLLOW_LABEL, INTENT_LABEL, MOMENTUM_LABEL, TEMP_LABEL } from '../lead-intel-logic';
 import { WD, WD_ORDER, type ReportModel } from './model';
+import { statsRows } from '../stats-logic';
 import { buildXlsx, type CellInput, type SheetInput } from './xlsx';
 
 const KIND = { new: 'WA Baru', followup: 'Follow-up', existing: 'Lama' } as const;
@@ -48,6 +49,19 @@ export function buildReportSheets(m: ReportModel, summary: Summary): SheetInput[
     const rows: CellInput[][] = [['Hari \\ Jam', ...Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0'))]];
     m.heatmap.forEach((r, i) => rows.push([{ v: WD[WD_ORDER[i]], s: 'bold' }, ...r.map((v) => ({ v, s: 'int' as const }))]));
     sheets.push({ name: 'Heatmap', rows, widths: [12, ...new Array<number>(24).fill(5)], headerRow: 0, autoFilter: false });
+  }
+
+  if (S.stats && m.stats) {
+    const rows: CellInput[][] = [['Statistik', 'Nilai']];
+    for (const [k, v] of statsRows(m.stats)) rows.push([k, v]);
+    if (m.stats.insights.length) { rows.push([], [{ v: 'Insight', s: 'bold' }]); for (const t of m.stats.insights) rows.push([{ v: t, s: 'wrap' }]); }
+    rows.push([], [{ v: 'Distribusi balasan pertama', s: 'bold' }, 'Jumlah']);
+    for (const b of m.stats.response.buckets) rows.push([b.label, { v: b.count, s: 'int' }]);
+    if (m.stats.accounts.length) {
+      rows.push([], [{ v: 'Akun', s: 'bold' }, 'Pesan', 'WA Baru', 'Median balasan', 'Belum dibalas']);
+      for (const a of m.stats.accounts) rows.push([a.name, { v: a.messages, s: 'int' }, { v: a.newLeads, s: 'int' }, a.medianMs == null ? '-' : formatDuration(a.medianMs), { v: a.unanswered, s: 'int' }]);
+    }
+    sheets.push({ name: 'Statistik', rows, widths: [34, 18, 12, 16, 14], headerRow: 0, autoFilter: false });
   }
 
   if (S.unanswered) {
