@@ -133,3 +133,40 @@ export function sortSlots(list: Slot[], key: SortKey): Slot[] {
   };
   return [...list].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || cmp[key](a, b));
 }
+
+// ---- recovery of slots whose login data still exists but that are missing from the registry ----
+/**
+ * Slot ids found in WhatsApp-origin storage names (`wwt:<sid>:…` IndexedDB databases or localStorage keys)
+ * that are not registered. Happens when the extension id changed (loaded from another folder), the extension
+ * was removed/reinstalled, or its own storage was cleared: the login data is intact, only the list is gone.
+ */
+export function extractOrphanSids(names: string[], known: string[]): string[] {
+  const seen = new Set(known);
+  const out: string[] = [];
+  for (const n of names) {
+    const m = /^wwt:([a-z0-9]{3,16}):/.exec(String(n));
+    if (!m) continue;
+    const id = m[1];
+    if (id === DEFAULT_SID || !isValidSid(id) || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+/** Parse the localStorage mirror defensively: {id: {label, color}}. */
+export function parseMirror(raw: unknown): Record<string, { label: string; color?: string }> {
+  const out: Record<string, { label: string; color?: string }> = {};
+  try {
+    const o = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!o || typeof o !== 'object') return out;
+    for (const [id, v] of Object.entries(o as Record<string, unknown>)) {
+      if (!isValidSid(id) || id === DEFAULT_SID || !v || typeof v !== 'object') continue;
+      const label = (v as { label?: unknown }).label;
+      if (typeof label !== 'string' || !label.trim()) continue;
+      const color = (v as { color?: unknown }).color;
+      out[id] = { label: label.trim().slice(0, 60), color: typeof color === 'string' ? color : undefined };
+    }
+  } catch { /* corrupt mirror -> ignore */ }
+  return out;
+}

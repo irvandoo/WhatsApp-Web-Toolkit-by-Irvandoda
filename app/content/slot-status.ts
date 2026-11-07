@@ -1,5 +1,5 @@
-import { PURGE_QUEUE_KEY, type SlotExec, type SlotMsg, type SlotState } from '../shared/slots';
-import { drainPurge } from '../shared/slots-logic';
+import { MIRROR_KEY, PURGE_QUEUE_KEY, type Slot, type SlotExec, type SlotMsg, type SlotState } from '../shared/slots';
+import { drainPurge, extractOrphanSids, parseMirror } from '../shared/slots-logic';
 import type { PingResult } from '../shared/messages';
 import { closeOverlay } from './overlay';
 import { currentSlotId, purgeSlotData, switchTo } from './switcher';
@@ -151,6 +151,7 @@ export function mountSlotStatus(): void {
   } catch { /* context gone */ }
 
   void drainPurgeQueue(sid);
+  void syncRegistry();
 }
 
 /** Purge slots queued while no WhatsApp tab was available (never this tab's own slot). */
@@ -164,4 +165,30 @@ export async function drainPurgeQueue(activeSid: string): Promise<string[]> {
     for (const id of run) await purgeSlotData(id);
     return run;
   } catch { return []; }
+}
+
+/**
+ * Keeps a copy of the slot list in WhatsApp-origin localStorage and re-registers slots whose login data
+ * still exists in this browser but that the extension no longer knows (extension id changed / reinstalled).
+ */
+export async function syncRegistry(): Promise<void> {
+  try {
+    const list = (await chrome.runtime.sendMessage({ kind: 'slot:list' } satisfies SlotMsg)) as Slot[] | { error: string };
+    if (!Array.isArray(list)) return;
+    const known = list.map((s) => s.id);
+    const names: string[] = [];
+    try { for (const d of (await indexedDB.databases?.()) ?? []) if (d.name) names.push(d.name); } catch { /* not supported */ }
+    try { for (const k of Object.keys(localStorage)) names.push(k); } catch { /* blocked */ }
+    const orphans = extractOrphanSids(names, known);
+    const mirror = (() => { try { return parseMirror(localStorage.getItem(MIRROR_KEY)); } catch { return {}; } })();
+    if (orphans.length) {
+      await chrome.runtime.sendMessage({
+        kind: 'slot:adopt', slots: orphans.map((id) => ({ id, label: mirror[id]?.label, color: mirror[id]?.color })),
+      } satisfies SlotMsg);
+    }
+    const fresh = orphans.length ? ((await chrome.runtime.sendMessage({ kind: 'slot:list' } satisfies SlotMsg)) as Slot[]) : list;
+    const out: Record<string, { label: string; color: string }> = {};
+    for (const s of Array.isArray(fresh) ? fresh : list) if (s.id !== 'default') out[s.id] = { label: s.label, color: s.color };
+    try { localStorage.setItem(MIRROR_KEY, JSON.stringify(out)); } catch { /* quota/blocked */ }
+  } catch { /* extension context gone */ }
 }

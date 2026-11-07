@@ -1,6 +1,12 @@
 import { defineManifest } from '@crxjs/vite-plugin';
 
-export default defineManifest({
+// Fixed public key => the SAME extension id no matter which folder it is loaded from (root, dist/full, unzipped release).
+// The extension id owns the slot registry (IndexedDB 'wwt'); a different id would make saved accounts "disappear".
+// Only the full build carries it; the Chrome Web Store assigns its own id and rejects nothing, but we keep it out of the store build.
+const FULL_KEY = 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxjTceT+SjthkaxQIhxia0Q3dKZgOmLXkDSwZbcmjyNDjj+NIujUiGBLrRNUE8nVFO8GXPbxWGcGURLbKjBGnl0N9/W/X65UntUGazea58+mDE39/oKzOEY7XF50PdSHRPx+g/hsw/J6xf4Wbn/D5xysF7/CuSa1/FY/2yJ2rmu0I+kP9Wlm6qyDt84QcDIm6Jd2PfzUMtMCPEW8IlbyjNgViQh+zGEGowE4b48Zloafk7s595sZFvbAbezOAnjKHQxHmzk90kvMbSoLbJ6aWejLdJUMla+zun1MIKKZNoEvixlteX/BAT5Cj3uiB6gXfi1cfT7gOmKqhaBbmKqN2FQIDAQAB';
+
+export default defineManifest(({ mode }) => ({
+  ...(mode === 'full' ? { key: FULL_KEY } : {}),
   manifest_version: 3,
   name: '__MSG_extName__',
   description: '__MSG_extDesc__',
@@ -22,4 +28,4 @@ export default defineManifest({
     { matches: ['https://web.whatsapp.com/*'], js: ['public/virtual-session.js'], run_at: 'document_start', world: 'MAIN', all_frames: false },
     { matches: ['https://web.whatsapp.com/*'], js: ['injected/wa-adapter.ts'], run_at: 'document_start', world: 'MAIN' },
   ],
-});
+}));

@@ -45,7 +45,11 @@ export type SlotMsg =
   | { kind: 'slot:switch-here'; id: string }
   | { kind: 'slot:purge'; id: string }
   | { kind: 'slot:export' }
-  | { kind: 'slot:import'; json: string };
+  | { kind: 'slot:import'; json: string }
+  | { kind: 'slot:adopt'; slots: { id: string; label?: string; color?: string }[] };
+
+/** Mirror of the registry kept in the WhatsApp origin's localStorage so labels survive an extension reinstall / id change. */
+export const MIRROR_KEY = 'wwt-slots-mirror';
 
 export type SlotPatch = Partial<Pick<Slot, 'label' | 'color' | 'groupId' | 'note' | 'pinned' | 'archived' | 'order'>>;
 

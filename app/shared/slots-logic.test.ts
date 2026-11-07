@@ -88,3 +88,21 @@ describe('sorting', () => {
     expect(sortSlots(l, 'name').map((s) => s.id)).toEqual(['ccc', 'bbb', 'aaa']);
   });
 });
+
+import { extractOrphanSids as _eo, parseMirror as _pm } from './slots-logic';
+describe('pemulihan akun yatim', () => {
+  it('menemukan slot yang datanya ada tapi tidak terdaftar', () => {
+    const names = ['wwt:abc123:model-storage', 'wwt:abc123:wawc', 'wwt:zzz999:wawc', 'model-storage', 'wwt:default:x', 'wwt:BAD!:x', 'wwt:known1:wawc'];
+    expect(_eo(names, ['default', 'known1'])).toEqual(['abc123', 'zzz999']);
+  });
+  it('tidak menghasilkan duplikat dan mengabaikan masukan aneh', () => {
+    expect(_eo(['wwt:abc123:a', 'wwt:abc123:b', 'wwt::x', 'wwt:ab:x', 'wwt:abcdefghijklmnopq:x'], [])).toEqual(['abc123']);
+    expect(_eo([], [])).toEqual([]);
+  });
+  it('membaca cermin dengan aman', () => {
+    expect(_pm('{"abc123":{"label":" Toko A ","color":"#128c7e"},"default":{"label":"x"},"bad!":{"label":"y"},"zzz999":{"label":""}}'))
+      .toEqual({ abc123: { label: 'Toko A', color: '#128c7e' } });
+    expect(_pm('bukan json')).toEqual({});
+    expect(_pm(null)).toEqual({});
+  });
+});

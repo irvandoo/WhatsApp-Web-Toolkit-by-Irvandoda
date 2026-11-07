@@ -1,4 +1,5 @@
 {
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxjTceT+SjthkaxQIhxia0Q3dKZgOmLXkDSwZbcmjyNDjj+NIujUiGBLrRNUE8nVFO8GXPbxWGcGURLbKjBGnl0N9/W/X65UntUGazea58+mDE39/oKzOEY7XF50PdSHRPx+g/hsw/J6xf4Wbn/D5xysF7/CuSa1/FY/2yJ2rmu0I+kP9Wlm6qyDt84QcDIm6Jd2PfzUMtMCPEW8IlbyjNgViQh+zGEGowE4b48Zloafk7s595sZFvbAbezOAnjKHQxHmzk90kvMbSoLbJ6aWejLdJUMla+zun1MIKKZNoEvixlteX/BAT5Cj3uiB6gXfi1cfT7gOmKqhaBbmKqN2FQIDAQAB",
   "manifest_version": 3,
   "name": "__MSG_extName__",
   "description": "__MSG_extDesc__",
@@ -51,7 +52,7 @@
         "assets/engine-health-C4mUYVmq.js",
         "assets/messages-zeJTLS5D.js",
         "assets/session-codec-BbjBUFD2.js",
-        "assets/slots-logic-DwQnGhMi.js",
+        "assets/slots-logic-CiDf2GGc.js",
         "assets/rotation-BIW7B5tm.js",
         "assets/composer-insert-B7X0Cr6v.js",
         "assets/crm-logic-BrfyloTL.js",
@@ -63,7 +64,7 @@
         "assets/template-engine-BoGLHE2L.js",
         "assets/wa-format-Cxt_uRRu.js",
         "assets/crm-types-BrsAoK90.js",
-        "assets/index.ts-abSJwzEW.js",
+        "assets/index.ts-DFj7TATl.js",
         "assets/virtual-session.js-CWgDXvAI.js",
         "assets/wa-adapter.ts-BBfVjdco.js"
       ],
@@ -73,7 +74,7 @@
   "content_scripts": [
     {
       "js": [
-        "assets/index.ts-loader-Dti2zeq5.js"
+        "assets/index.ts-loader-CbaYiWAy.js"
       ],
       "matches": [
         "https://web.whatsapp.com/*"

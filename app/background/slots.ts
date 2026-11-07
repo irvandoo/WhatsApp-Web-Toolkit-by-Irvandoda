@@ -70,6 +70,21 @@ async function focusTab(t: chrome.tabs.Tab): Promise<void> {
 export async function handleSlots(m: SlotMsg, sender?: chrome.runtime.MessageSender): Promise<unknown> {
   await ensureDefault();
   switch (m.kind) {
+    case 'slot:adopt': {
+      // re-register slots whose data still lives in the browser (see extractOrphanSids); never overwrites existing ones
+      const out: string[] = [];
+      for (const a of (Array.isArray(m.slots) ? m.slots : []).slice(0, 50)) {
+        if (!isValidSid(a?.id) || a.id === DEFAULT_SID || (await db.slots.get(a.id))) continue;
+        const now = Date.now();
+        await db.slots.put({
+          id: a.id, label: validateLabel(a.label || `Akun pulih ${a.id}`), color: normalizeColor(a.color),
+          groupId: null, note: 'Dipulihkan otomatis dari data login yang masih tersimpan di browser.',
+          accountId: null, createdAt: now, lastUsedAt: now,
+        });
+        out.push(a.id);
+      }
+      return { ok: true, adopted: out };
+    }
     case 'slot:list':
       return (await db.slots.toArray()).sort((a, b) => a.createdAt - b.createdAt);
     case 'slot:create':
