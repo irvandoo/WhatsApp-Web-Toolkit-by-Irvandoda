@@ -1,0 +1,30 @@
+{
+  "name": "whatsapp-web-toolkit-by-irvandoda",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "author": "Irvando Demas Arifiandani <irvando.d.a@gmail.com> (https://irvandoda.web.id)",
+  "scripts": {
+    "dev": "vite",
+    "build:store": "tsc --noEmit && vite build --mode store",
+    "build:full": "tsc --noEmit && vite build --mode full",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "dexie": "^4.0.10",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.0.0-beta.28",
+    "@types/chrome": "^0.0.280",
+    "@types/node": "^22.20.5",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8"
+  }
+}
