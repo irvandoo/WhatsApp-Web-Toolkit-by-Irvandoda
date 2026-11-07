@@ -3,11 +3,13 @@ import { db } from '../shared/db';
 import type { RuntimeMsg } from '../shared/messages';
 import { handleAccounts, NOT_HANDLED } from './accounts';
 import { installSessions } from './sessions';
+import { installUiOpen } from './ui-open';
 import { handleCrm, isCrmMsg, registerCrmAlarms } from './crm';
 import { handleTemplates, isTplMsg, seedTemplates } from './templates';
 import type { CrmMsg } from '../shared/crm-types';
 
 installSessions();
+installUiOpen();
 registerCrmAlarms();
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -24,7 +26,7 @@ chrome.runtime.onMessage.addListener((m: CrmMsg, sender, sendResponse) => {
 
 chrome.runtime.onMessage.addListener((m: RuntimeMsg, sender, sendResponse) => {
   const kind = String((m as { kind?: string })?.kind);
-  if (sender.id !== chrome.runtime.id || /^(sess|crm|tpl):/.test(kind)) return false;
+  if (sender.id !== chrome.runtime.id || /^(sess|crm|tpl|ui):/.test(kind)) return false;
   (async () => {
     switch (m.kind) {
       case 'archive:put':
