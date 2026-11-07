@@ -6,8 +6,8 @@ import type { Account, RuntimeMsg, SessionMeta } from '../shared/messages';
 import { listChats, ping, syncAll, syncChat, type SyncProgress } from './sync';
 import { icon } from './panel-icons';
 import { PANEL_CSS } from './panel-style';
+import { mountOverlayListener, openOverlay, type OverlayPage } from './overlay';
 
-type UiOpenMsg = { kind: 'ui:open'; page: 'dashboard' | 'crm' | 'templates' };
 type Props = Record<string, string>;
 
 const POS_KEY = 'wwt-fab-y';
@@ -27,12 +27,13 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Props = {}, ...
   return el;
 }
 const alive = () => { try { return !!chrome.runtime?.id; } catch { return false; } };
-const send = async <T,>(m: RuntimeMsg | UiOpenMsg): Promise<T | undefined> => {
+const send = async <T,>(m: RuntimeMsg): Promise<T | undefined> => {
   try { if (!alive()) return undefined; return (await chrome.runtime.sendMessage(m)) as T; } catch { return undefined; }
 };
 
 export function mountPanel(): void {
   if (document.getElementById('wwt-panel')) return;
+  mountOverlayListener();
   const host = h('div', { id: 'wwt-panel' });
   const root = host.attachShadow({ mode: 'closed' });
   const wrap = h('div', { class: 'root' });
@@ -90,23 +91,30 @@ export function mountPanel(): void {
 
   // ---- Akun tab
   const accId = kv('ID akun', '-'), accName = kv('Nama', '-'), accUnread = kv('Belum dibaca', '-');
-  const openers: [string, UiOpenMsg['page']][] = [['Buka Hub', 'dashboard'], ['Buka CRM', 'crm'], ['Buka Template', 'templates']];
+  const openers: [string, OverlayPage][] = [['Buka Hub', 'dashboard'], ['Buka CRM', 'crm'], ['Buka Template', 'templates'], ['Buka Analitik', 'analytics']];
   const openRow = h('div', { class: 'row' });
   for (const [label, page] of openers) {
     const b = btn(label, 'external');
-    b.addEventListener('click', () => { void send<unknown>({ kind: 'ui:open', page }); });
+    b.addEventListener('click', () => { close(); openOverlay(page); });
     openRow.append(b);
   }
   const secAcc = h('section', {}, h('div', { class: 'card' }, accId.row, accName.row, accUnread.row), openRow);
 
   // ---- Modul tab
   const tiles = h('div', { class: 'tiles' });
-  for (const t of ['POS', 'Blast', 'Ekstrak grup', 'Analitik']) tiles.append(h('div', { class: 'tile' }, h('b', {}, t), h('small', {}, 'Segera')));
+  for (const t of ['POS', 'Blast', 'Ekstrak grup']) tiles.append(h('div', { class: 'tile' }, h('b', {}, t), h('small', {}, 'Segera')));
+  const modRow = h('div', { class: 'row' });
+  for (const [label, page] of [['Hub', 'dashboard'], ['CRM', 'crm'], ['Template', 'templates'], ['Analitik', 'analytics']] as [string, OverlayPage][]) {
+    const b = btn(label, 'external');
+    b.addEventListener('click', () => { close(); openOverlay(page); });
+    modRow.append(b);
+  }
   const secMod = h('section', {},
     h('h3', {}, 'CRM & Template'),
     h('div', { class: 'card' },
       h('p', {}, 'Template: ketik ', h('code', {}, '/kode'), ' di kolom pesan lalu pilih template. Variabel seperti nama akan diisi otomatis.'),
       h('p', {}, 'CRM: bar CRM muncul di atas chat yang terbuka. Atur tahap, tag, dan pengingat langsung dari sana.')),
+    h('h3', {}, 'Buka modul'), modRow,
     h('h3', {}, 'Akan datang'), tiles);
 
   // ---- Sesi tab

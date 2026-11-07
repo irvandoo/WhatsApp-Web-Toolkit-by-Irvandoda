@@ -2,7 +2,7 @@
 // failures degrade to "unavailable" / DOM fallbacks instead of throwing.
 import {
   BRIDGE_CHANNEL, type ArchivedMsg, type BridgeEnvelope, type BridgeRequest, type BridgeResponse,
-  type ChatInfo, type LoadEarlierResult, type PingResult,
+  type ActivityChat, type ActivityScanResult, type ChatInfo, type LoadEarlierResult, type PingResult,
 } from '../shared/messages';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -93,6 +93,37 @@ function trim(): number {
   return n;
 }
 
+const SCAN_CAP = 300;
+/** WA timestamps are epoch SECONDS; normalise to ms (values already >= 1e12 are left alone). */
+const toMs = (t: number): number => (t < 1e12 ? Math.round(t * 1000) : t);
+const SYSTEM_TYPES = new Set(['e2e_notification', 'notification', 'notification_template', 'gp2', 'protocol', 'call_log', 'revoked']);
+
+/** Per-chat activity (id/ts/fromMe only) from WA's loaded models merged with our own cache. Never throws. */
+function scanActivity(): ActivityScanResult {
+  const chats: ActivityChat[] = [];
+  let list: Any[] = [];
+  try { list = chatsColl(); } catch { list = []; }
+  for (const c of list) {
+    try {
+      const id = wid(c?.id);
+      if (!id || id.includes('broadcast') || id.startsWith('status@')) continue;
+      const seen = new Map<string, { id: string; ts: number; fromMe: boolean }>();
+      for (const m of msgsOf(c)) {
+        const mid = m?.id?._serialized ?? m?.id?.$1;
+        if (!mid || typeof m.t !== 'number' || m.t <= 0 || SYSTEM_TYPES.has(m.type)) continue;
+        seen.set(String(mid), { id: String(mid), ts: toMs(m.t), fromMe: !!m.id?.fromMe });
+      }
+      for (const a of cache.get(id)?.values() ?? []) {
+        if (!seen.has(a.id) && a.ts > 0 && !SYSTEM_TYPES.has(a.type)) seen.set(a.id, { id: a.id, ts: toMs(a.ts), fromMe: a.fromMe });
+      }
+      if (!seen.size) continue;
+      const events = [...seen.values()].sort((x, y) => y.ts - x.ts).slice(0, SCAN_CAP);
+      chats.push({ id, name: String(c.formattedTitle ?? c.name ?? c.id?.user ?? ''), isGroup: !!c.isGroup, events });
+    } catch { /* skip chat */ }
+  }
+  return { accountId: accountId(), chats };
+}
+
 function reply(res: BridgeResponse) {
   const env: BridgeEnvelope<BridgeResponse> = { channel: BRIDGE_CHANNEL, dir: 'res', payload: res };
   window.postMessage(env, window.location.origin);
@@ -115,6 +146,8 @@ async function handle(r: BridgeRequest): Promise<BridgeResponse> {
     }
     case 'sync:loadEarlier':
       return { id: r.id, ok: true, data: await loadEarlier(r.chatId) };
+    case 'activity:scan':
+      return { id: r.id, ok: true, data: scanActivity() };
     case 'memory:trim':
       return { id: r.id, ok: true, data: { trimmed: trim() } };
   }

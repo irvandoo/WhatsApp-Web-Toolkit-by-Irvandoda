@@ -24,6 +24,7 @@ export default defineConfig(({ mode }) => {
           dashboard: path.resolve(app, 'dashboard/index.html'),
           crm: path.resolve(app, 'crm/index.html'),
           templates: path.resolve(app, 'templates/index.html'),
+          analytics: path.resolve(app, 'analytics/index.html'),
         },
       },
     },

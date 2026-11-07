@@ -6,6 +6,7 @@ import { installSessions } from './sessions';
 import { installUiOpen } from './ui-open';
 import { handleCrm, isCrmMsg, registerCrmAlarms } from './crm';
 import { handleTemplates, isTplMsg, seedTemplates } from './templates';
+import { handleTrack, isTrackMsg } from './track';
 import type { CrmMsg } from '../shared/crm-types';
 
 installSessions();
@@ -24,9 +25,16 @@ chrome.runtime.onMessage.addListener((m: CrmMsg, sender, sendResponse) => {
   return true;
 });
 
+// Analytics tracking (separate listener).
+chrome.runtime.onMessage.addListener((m: unknown, sender, sendResponse) => {
+  if (sender.id !== chrome.runtime.id || !isTrackMsg(m)) return false;
+  handleTrack(m).then(sendResponse, (e) => sendResponse({ error: String(e) }));
+  return true;
+});
+
 chrome.runtime.onMessage.addListener((m: RuntimeMsg, sender, sendResponse) => {
   const kind = String((m as { kind?: string })?.kind);
-  if (sender.id !== chrome.runtime.id || /^(sess|crm|tpl|ui):/.test(kind)) return false;
+  if (sender.id !== chrome.runtime.id || /^(sess|crm|tpl|ui|track):/.test(kind)) return false;
   (async () => {
     switch (m.kind) {
       case 'archive:put':

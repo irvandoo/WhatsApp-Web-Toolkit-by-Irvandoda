@@ -45,12 +45,20 @@ Ekstensi Google Chrome (Manifest V3) untuk **https://web.whatsapp.com/** yang di
 - Variabel `{nama}` `{telepon}` `{tahap}` `{tanggal}` `{akun}` dan spintax `{halo|hai|selamat siang}`.
 - Pengelola template dengan pratinjau, impor/ekspor JSON.
 
-### 5. Optimasi memori tab
+### 5. Analitik & pengingat "belum dibalas"
+- Pelacakan pesan masuk/keluar **tanpa menyimpan isi pesan** (hanya waktu dan arah).
+- Rentang: Hari ini, Minggu, Bulan, Tahun, Semua, dan Custom; grafik harian/mingguan/bulanan, heatmap jam×hari, perbandingan dengan periode sebelumnya.
+- **WA Baru** = nomor yang pertama kali mengirim pesan dan belum pernah kamu balas. Setelah dibalas, pesan berikutnya dihitung **follow-up**.
+- Tab **Belum Dibalas**: berapa lama chat menunggu, prioritas (urgent ≥ 24 jam, high ≥ 6 jam, normal ≥ 1 jam), urut dan filter (akun, jenis, tahap CRM, tag, lama menunggu), tombol buat pengingat.
+- Laporan: ekspor CSV/JSON, impor CSV, dan unduh template CSV.
+- Semua modul (Hub, CRM, Template, Analitik) tampil sebagai **overlay di layar WhatsApp Web**, bukan tab baru. Jika WhatsApp memblokir pembingkaian, tersedia tombol "Buka di tab".
+
+### 6. Optimasi memori tab
 - `content-visibility: auto` untuk baris chat dan pesan di luar layar.
 - Animasi dihentikan saat tab tersembunyi.
 - Pembaca JS heap dan tombol pembersihan cache internal ekstensi.
 
-### 6. Rencana berikutnya
+### 7. Rencana berikutnya
 POS (katalog, invoice), blast terjadwal dengan jeda aman, ekstrak anggota grup (hanya build `full`), analitik. Lihat [Roadmap](#roadmap).
 
 ---
@@ -67,7 +75,8 @@ POS (katalog, invoice), blast terjadwal dengan jeda aman, ekstrak anggota grup (
 | Snapshot sesi | 🧪 Eksperimental, kemungkinan tidak didukung |
 | CRM | 🟡 Terpasang, belum diuji di browser |
 | Template / quick reply | 🟡 Terpasang, belum diuji di browser |
-| POS, Blast, Ekstrak grup, Analitik | ⏳ Belum dimulai |
+| Analitik, pelacakan, belum dibalas, overlay | 🟡 Terpasang, belum diuji di browser |
+| POS, Blast, Ekstrak grup | ⏳ Belum dimulai |
 
 ---
 

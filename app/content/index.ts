@@ -4,6 +4,7 @@ import { mountAccountReporter } from './account';
 import { mountPanel } from './panel';
 import { mountCrmChatBar } from './crm-bridge';
 import { mountComposer } from './composer';
+import { mountTracker } from './tracker';
 
 document.documentElement.dataset.wwt = CREDIT.nickname;
 installMemorySaver();
@@ -11,3 +12,4 @@ mountPanel();
 mountAccountReporter();
 mountCrmChatBar();
 mountComposer();
+mountTracker();

@@ -19,7 +19,13 @@ export type BridgeRequest =
   | { id: string; type: 'chats:list' }
   | { id: string; type: 'chat:messages'; chatId: string }
   | { id: string; type: 'sync:loadEarlier'; chatId: string }
-  | { id: string; type: 'memory:trim'; keepChatId?: string };
+  | { id: string; type: 'memory:trim'; keepChatId?: string }
+  | { id: string; type: 'activity:scan' };
+
+/** activity:scan result: per-chat message activity without bodies. */
+export interface ActivityEvent { id: string; ts: number; fromMe: boolean }
+export interface ActivityChat { id: string; name: string; isGroup: boolean; events: ActivityEvent[] }
+export type ActivityScanResult = { accountId: string | null; chats: ActivityChat[] };
 
 export type BridgeResponse = { id: string; ok: boolean; data?: unknown; error?: string };
 export interface BridgeEnvelope<T> { channel: typeof BRIDGE_CHANNEL; dir: 'req' | 'res'; payload: T }

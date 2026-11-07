@@ -30,10 +30,32 @@
   "host_permissions": [
     "https://web.whatsapp.com/*"
   ],
+  "web_accessible_resources": [
+    {
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "resources": [
+        "dashboard/index.html",
+        "crm/index.html",
+        "templates/index.html",
+        "analytics/index.html",
+        "assets/*",
+        "assets/credit-Clr3KknC.js",
+        "assets/messages-01GVDVMN.js",
+        "assets/crm-logic-9iW_lkun.js",
+        "assets/template-engine-B5HOWEY9.js",
+        "assets/crm-types-BrsAoK90.js",
+        "assets/index.ts-Dt7wRvjh.js",
+        "assets/wa-adapter.ts-BiL8g5la.js"
+      ],
+      "use_dynamic_url": false
+    }
+  ],
   "content_scripts": [
     {
       "js": [
-        "assets/index.ts-loader-D60tAnld.js"
+        "assets/index.ts-loader-1oVKTJd7.js"
       ],
       "matches": [
         "https://web.whatsapp.com/*"
@@ -42,29 +64,13 @@
     },
     {
       "js": [
-        "assets/wa-adapter.ts-loader-BUDJjdSS.js"
+        "assets/wa-adapter.ts-loader-DFdAjMBa.js"
       ],
       "matches": [
         "https://web.whatsapp.com/*"
       ],
       "run_at": "document_start",
       "world": "MAIN"
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "matches": [
-        "https://web.whatsapp.com/*"
-      ],
-      "resources": [
-        "assets/credit-Clr3KknC.js",
-        "assets/messages-01GVDVMN.js",
-        "assets/session-codec-BbjBUFD2.js",
-        "assets/template-engine-B5HOWEY9.js",
-        "assets/index.ts-DxMYuuNo.js",
-        "assets/wa-adapter.ts-MCm-B1FH.js"
-      ],
-      "use_dynamic_url": false
     }
   ]
 }

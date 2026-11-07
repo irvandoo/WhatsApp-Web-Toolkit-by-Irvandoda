@@ -9,6 +9,37 @@ import { useLiveCount } from './live';
 
 const WA = 'https://web.whatsapp.com/*';
 const open = (p: string) => { void chrome.tabs.create({ url: chrome.runtime.getURL(p) }); window.close(); };
+type Page = 'dashboard' | 'crm' | 'templates' | 'analytics';
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+async function focusTab(tab: chrome.tabs.Tab) {
+  if (tab.id != null) await chrome.tabs.update(tab.id, { active: true });
+  if (tab.windowId != null) await chrome.windows.update(tab.windowId, { focused: true });
+}
+/** Show a module as an in-page overlay on WhatsApp Web; the extension page is only opened as a tab if messaging ultimately fails. */
+async function openModule(page: Page) {
+  const msg = { kind: 'ui:overlay', page };
+  const trySend = async (id: number) => { try { await chrome.tabs.sendMessage(id, msg); return true; } catch { return false; } };
+  try {
+    let [tab] = await chrome.tabs.query({ url: WA });
+    let ok = false;
+    if (tab?.id != null) {
+      ok = await trySend(tab.id);
+    } else {
+      tab = await chrome.tabs.create({ url: 'https://web.whatsapp.com' });
+      const start = Date.now();
+      // wait for load, then retry every 2s up to 10s while the content script boots
+      await sleep(2000);
+      while (!ok && tab.id != null && Date.now() - start < 12000) {
+        const cur = await chrome.tabs.get(tab.id);
+        if (cur.status === 'complete') ok = await trySend(tab.id);
+        if (!ok) await sleep(2000);
+      }
+    }
+    if (ok) { await focusTab(tab); window.close(); return; }
+  } catch { /* fall through */ }
+  void chrome.tabs.create({ url: chrome.runtime.getURL(`${page}/index.html`) });
+  window.close();
+}
 async function focusWA(create = true) {
   const [tab] = await chrome.tabs.query({ url: WA });
   if (tab?.id != null) { await chrome.tabs.update(tab.id, { active: true }); if (tab.windowId != null) await chrome.windows.update(tab.windowId, { focused: true }); }
@@ -56,6 +87,7 @@ function Popup() {
   const reminders = useLiveCount(() => db.reminders.filter(r => !r.done).count());
   const sessions = useLiveCount(() => db.sessions.count());
   const msgs = useLiveCount(() => db.messages.count());
+  const unanswered = useLiveCount(() => db.interactions.filter(i => !i.isGroup && i.lastInTs != null && (i.lastOutTs == null || i.lastInTs > i.lastOutTs)).count());
   const [hint, setHint] = useState(false);
   let st: [string, string] = ['wait', 'Memeriksa...'];
   if (tabs === 0) st = ['off', 'WA Web belum dibuka'];
@@ -78,17 +110,17 @@ function Popup() {
       </section>
       <main className="grid">
         <Tile icon={icons.sync} title="Sync Center" desc="Buka & fokus tab WhatsApp Web" onClick={() => void focusWA()} />
-        <Tile icon={icons.hub} title="Hub Akun" desc="Dasbor semua akun" badge={accounts.length} onClick={() => open('dashboard/index.html')} />
-        <Tile icon={icons.crm} title="CRM" desc="Kontak, tahap, catatan" badge={contacts} onClick={() => open('crm/index.html')} />
-        <Tile icon={icons.tpl} title="Template" desc="Balasan cepat dengan shortcut" onClick={() => open('templates/index.html')} />
+        <Tile icon={icons.hub} title="Hub Akun" desc="Dasbor semua akun" badge={accounts.length} onClick={() => void openModule('dashboard')} />
+        <Tile icon={icons.crm} title="CRM" desc="Kontak, tahap, catatan" badge={contacts} onClick={() => void openModule('crm')} />
+        <Tile icon={icons.tpl} title="Template" desc="Balasan cepat dengan shortcut" onClick={() => void openModule('templates')} />
+        <Tile icon={icons.chart} title="Analitik" desc="Statistik percakapan & lead" badge={unanswered} onClick={() => void openModule('analytics')} />
         <Tile icon={icons.mem} title="Memori" desc="Hemat RAM, buka dari panel" onClick={() => setHint(true)} />
-        <Tile icon={icons.ses} title="Sesi tersimpan" desc="Snapshot sesi (eksperimental)" badge={sessions} onClick={() => open('dashboard/index.html')} />
+        <Tile icon={icons.ses} title="Sesi tersimpan" desc="Snapshot sesi (eksperimental)" badge={sessions} onClick={() => void openModule('dashboard')} />
         <Tile icon={icons.arc} title="Arsip pesan" desc="Pesan lokal tersimpan" badge={msgs} onClick={() => void focusWA()} />
         <Tile icon={icons.set} title="Pengaturan" desc="Opsi & tentang" onClick={() => open('options/index.html')} />
         <Tile soon icon={icons.pos} title="POS" desc="Kasir & pesanan" />
         <Tile soon icon={icons.blast} title="Blast terjadwal" desc="Kirim terjadwal" />
         <Tile soon icon={icons.grp} title="Ekstrak grup" desc="Ekspor anggota grup" />
-        <Tile soon icon={icons.chart} title="Analitik" desc="Statistik percakapan" />
       </main>
       {hint && <p className="hint" role="status">Fitur Memori ada di panel melayang pada tab WhatsApp Web.</p>}
       <footer className="ft">
