@@ -47,20 +47,22 @@
         "presets/index.html",
         "assets/*",
         "assets/credit-D45yROeQ.js",
-        "assets/messages-01GVDVMN.js",
-        "assets/slots-DIY-g8k1.js",
+        "assets/composer-insert-CIXApDVA.js",
+        "assets/session-codec-BbjBUFD2.js",
+        "assets/slots-DJejQdeJ.js",
         "assets/rotation-Boy0OiaH.js",
         "assets/crm-logic-BrfyloTL.js",
-        "assets/autoreply-logic-Bt5WwMqq.js",
-        "assets/autoreply-types-BtvX2hq4.js",
+        "assets/autoreply-logic-D4459LnL.js",
+        "assets/autoreply-types-Df-z_QjU.js",
         "assets/analytics-logic-CQSGZEo7.js",
         "assets/lead-intel-logic-Eys90P2A.js",
         "assets/outbox-logic-DQTJojXg.js",
+        "assets/wa-format-Cxt_uRRu.js",
         "assets/template-engine-B5HOWEY9.js",
         "assets/crm-types-BrsAoK90.js",
-        "assets/index.ts-BKU-4xyk.js",
+        "assets/index.ts-CkN5vPxS.js",
         "assets/virtual-session.js-CWgDXvAI.js",
-        "assets/wa-adapter.ts-BZPPfySc.js"
+        "assets/wa-adapter.ts-anPQdLLZ.js"
       ],
       "use_dynamic_url": false
     }
@@ -68,7 +70,7 @@
   "content_scripts": [
     {
       "js": [
-        "assets/index.ts-loader-CV6QLp_L.js"
+        "assets/index.ts-loader-BujpS3Qf.js"
       ],
       "matches": [
         "https://web.whatsapp.com/*"
@@ -88,7 +90,7 @@
     },
     {
       "js": [
-        "assets/wa-adapter.ts-loader-C2qyd_Ed.js"
+        "assets/wa-adapter.ts-loader-BmAMMg0d.js"
       ],
       "matches": [
         "https://web.whatsapp.com/*"

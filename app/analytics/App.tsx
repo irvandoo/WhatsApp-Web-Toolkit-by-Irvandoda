@@ -6,6 +6,8 @@ import { BarChart, Heatmap } from './Charts';
 import { eventsIn, useContacts, useEarliest, useInteractions, useLive } from './data';
 import { HotLeads } from './HotLeads';
 import { Report } from './Report';
+import { ExportDialog } from './ExportDialog';
+import { hotLeads } from '../shared/lead-intel-logic';
 import { useLeadIntel } from '../shared/lead-intel-live';
 import { Unanswered } from './Unanswered';
 import { fmtNum } from './util';
@@ -36,6 +38,7 @@ export function App() {
   const [groups, setGroups] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [msg, setMsg] = useState('');
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => { const f = () => setTab(tabFromHash()); window.addEventListener('hashchange', f); return () => window.removeEventListener('hashchange', f); }, []);
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, []);
@@ -65,6 +68,11 @@ export function App() {
   const prev = useMemo(() => (prevRange ? summarize(prevEvents, interactions, prevRange, opts) : null), [prevEvents, interactions, prevRange, opts]);
   const unanswered = useMemo(() => buildUnanswered(interactions, now, opts), [interactions, now, opts]);
   const scoped = useMemo(() => interactions.filter((i) => (!acc || i.accountId === acc) && (groups || !i.isGroup)), [interactions, acc, groups]);
+
+  const hotScoped = useMemo(() => {
+    const groupKeys = new Set(interactions.filter((i) => i.isGroup).map((i) => i.key));
+    return hotLeads([...intel.values()].filter((l) => (!acc || l.accountId === acc) && (groups || !groupKeys.has(l.key))));
+  }, [intel, interactions, acc, groups]);
 
   const hasData = interactions.length > 0 || events.length > 0;
   const kpis: { l: string; v: string; cur: number; prev: number | null; invert?: boolean }[] = [
@@ -97,6 +105,7 @@ export function App() {
           {accounts.map((a) => <option key={a.id} value={a.id}>{a.name || a.id}</option>)}
         </select>
         <label className="chk"><input type="checkbox" checked={groups} onChange={(e) => setGroups(e.target.checked)} />Termasuk grup</label>
+        <button className="primary" onClick={() => setExporting(true)} aria-haspopup="dialog">Ekspor laporan</button>
       </div>
 
       <div className="tabs" role="tablist" aria-label="Bagian analitik">
@@ -153,6 +162,10 @@ export function App() {
 
       </div>
 
+      {exporting && (
+        <ExportDialog summary={summary} prev={prev} unanswered={unanswered} hot={hotScoped} interactions={scoped} events={events} includeGroups={groups}
+          accountNames={accountNames} accountId={acc} now={now} onClose={() => setExporting(false)} onOther={() => { setExporting(false); setTab('laporan'); }} />
+      )}
       {msg && <div className="toast" role="status">{msg}</div>}
     </div>
   );

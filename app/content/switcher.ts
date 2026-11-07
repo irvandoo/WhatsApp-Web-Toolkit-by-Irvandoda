@@ -31,15 +31,25 @@ export function switchTo(sid: string): void {
  * Remove a deleted slot's data. The isolated world sees the REAL (unprefixed-by-us) storage, so
  * it can find `wwt:<sid>:*`. Refuses the active slot (WA is using it).
  */
-export async function purgeSlotData(sid: string): Promise<void> {
-  if (sid === DEFAULT_SID || sid === currentSlotId() || !isValidSid(sid)) return;
+export async function purgeSlotData(sid: string): Promise<number> {
+  if (sid === DEFAULT_SID || sid === currentSlotId() || !isValidSid(sid)) return 0;
   const p = slotPrefix(sid);
+  let n = 0;
   try {
-    for (const d of (await indexedDB.databases?.()) ?? []) if (d.name?.startsWith(p)) indexedDB.deleteDatabase(d.name);
+    const names = ((await indexedDB.databases?.()) ?? []).map((d) => d.name).filter((x): x is string => !!x && x.startsWith(p));
+    await Promise.all(names.map((name) => new Promise<void>((res) => {
+      n++;
+      try {
+        const r = indexedDB.deleteDatabase(name);
+        r.onsuccess = r.onerror = r.onblocked = () => res();
+        setTimeout(res, 4000);
+      } catch { res(); }
+    })));
   } catch { /* best effort */ }
   try {
-    for (const k of Object.keys(localStorage)) if (k.startsWith(p)) localStorage.removeItem(k);
+    for (const k of Object.keys(localStorage)) if (k.startsWith(p)) { localStorage.removeItem(k); n++; }
   } catch { /* best effort */ }
+  return n;
 }
 
 /** Once the adapter reports an account id, bind it to the current slot (retries until known, ~10 min). */

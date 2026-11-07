@@ -4,8 +4,9 @@ import {
   BRIDGE_CHANNEL, type ArchivedMsg, type BridgeEnvelope, type BridgeRequest, type BridgeResponse,
   type ActivityChat, type ActivityScanResult, type ChatInfo, type LoadEarlierResult, type PingResult,
   type RegisteredResult, type GroupInfo, type GroupMember, type GroupsListResult, type GroupMembersResult,
-  type LabelInfo, type LabelChat, type LabelsListResult, type LabelChatsResult,
+  type LabelInfo, type LabelChat, type LabelsListResult, type LabelChatsResult, type SendResult, type ProbeItem, type ProbeResult,
 } from '../shared/messages';
+import { insertIntoComposer } from '../content/composer-insert';
 import type { InboxItem } from '../shared/autoreply-types';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -283,16 +284,36 @@ async function labelChats(labelId: string): Promise<LabelChatsResult> {
 
 const INBOX_TEXT_TYPES = new Set(['chat']);
 const INBOX_CAP = 500;
+const BOT_RE = /(^|[^a-z])bot($|[^a-z])/i;
 
-/** Newest inbound text per non-group chat since sinceTs (ms). Never throws. */
-function pollInbox(sinceTs: number): InboxItem[] {
+const mentionsMe = (m: Any, me: Set<string>): boolean => {
+  try {
+    const list: Any[] = m?.mentionedJidList ?? m?.mentionedJids ?? [];
+    return list.some((x) => me.has(wid(x)) || me.has(wsUser(x)));
+  } catch { return false; }
+};
+const quotesMe = (m: Any, me: Set<string>): boolean => {
+  try {
+    const q = m?.quotedParticipant ?? m?.quotedMsg?.author ?? m?.quotedMsg?.from;
+    return !!q && (me.has(wid(q)) || me.has(wsUser(q)));
+  } catch { return false; }
+};
+
+/**
+ * Newest inbound text per chat since sinceTs (ms). Personal chats only unless `includeGroups` (then group items carry
+ * isGroup/author/groupName/mentionedMe/quotedMe). Never throws.
+ */
+function pollInbox(sinceTs: number, includeGroups = false): InboxItem[] {
   const out: InboxItem[] = [];
   let list: Any[] = [];
   try { list = chatsColl(); } catch { list = []; }
+  const me = includeGroups ? meIds() : new Set<string>();
   for (const c of list) {
     try {
       const id = wid(c?.id);
-      if (!id || c.isGroup || id.includes('broadcast') || id.startsWith('status@') || id.endsWith('@g.us') || id.endsWith('@newsletter')) continue;
+      if (!id || id.includes('broadcast') || id.startsWith('status@') || id.endsWith('@newsletter')) continue;
+      const isGroup = !!c.isGroup || id.endsWith('@g.us');
+      if (isGroup && !includeGroups) continue;
       let lastIn: Any = null, lastInTs = 0, lastOut = 0;
       for (const m of msgsOf(c)) {
         if (typeof m?.t !== 'number' || m.t <= 0 || SYSTEM_TYPES.has(m.type)) continue;
@@ -304,42 +325,188 @@ function pollInbox(sinceTs: number): InboxItem[] {
       if (!lastIn || lastInTs <= sinceTs || !INBOX_TEXT_TYPES.has(lastIn.type)) continue;
       const body = typeof lastIn.body === 'string' ? lastIn.body : '';
       if (!body.trim()) continue;
-      out.push({
+      const item: InboxItem = {
         chatId: id, name: String(c.formattedTitle ?? c.name ?? c.id?.user ?? ''),
         msgId: String(lastIn.id?._serialized ?? lastIn.id?.$1 ?? `${id}|${lastInTs}`), ts: lastInTs,
         text: body.slice(0, INBOX_CAP), fromMe: false, lastOutTs: lastOut || null,
-      });
+      };
+      if (includeGroups) {
+        item.isGroup = isGroup;
+        if (isGroup) {
+          const au = lastIn.author ?? lastIn.senderObj?.id ?? lastIn.from;
+          item.author = au ? wid(au) : undefined;
+          const ct = lastIn.senderObj ?? store.collections?.Contact?.get?.(au);
+          item.authorName = String(ct?.name ?? ct?.shortName ?? ct?.pushname ?? lastIn.notifyName ?? '') || undefined;
+          item.groupName = item.name;
+          item.mentionedMe = mentionsMe(lastIn, me);
+          item.quotedMe = quotesMe(lastIn, me);
+          item.isBot = !!lastIn.isBot || BOT_RE.test(String(item.authorName ?? '')) || /@bot$/.test(item.author ?? '');
+        }
+      }
+      out.push(item);
     } catch { /* skip chat */ }
   }
   return out.sort((a, b) => a.ts - b.ts);
 }
 
-/**
- * Send plain text to a 1:1 chat via WA internals. Feature-detected; module names/signatures are UNVERIFIED
- * against the live site. Throws 'send-unavailable' when nothing works (never fakes success).
- */
-async function sendText(chatId: string, text: string): Promise<{ sent: true }> {
-  if (!text.trim() || chatId.endsWith('@g.us') || chatId.includes('broadcast') || chatId.startsWith('status@')) throw new Error('send-rejected');
-  const chat = findChat(chatId);
-  if (!chat) throw new Error('chat-not-found');
-  const attempts: Array<() => Promise<unknown> | unknown> = [];
-  const m1 = req('WAWebChatSendMessages');
-  if (typeof m1?.addAndSendTextMsg === 'function') attempts.push(() => m1.addAndSendTextMsg(chat, text));
-  if (typeof m1?.sendTextMsgToChat === 'function') attempts.push(() => m1.sendTextMsgToChat(chat, text));
-  const m2 = req('WAWebSendTextMsgChatAction');
-  if (typeof m2?.sendTextMsgToChat === 'function') attempts.push(() => m2.sendTextMsgToChat(chat, text));
-  if (typeof chat.sendMessage === 'function') attempts.push(() => chat.sendMessage(text));
-  if (!attempts.length) throw new Error('send-unavailable');
-  let lastErr: unknown;
-  for (const a of attempts) {
-    try {
-      const r = await a();
-      // some builds resolve with a result tuple/object carrying an error flag
-      if (r && typeof r === 'object' && ((r as Any).messageSendResult === 'ERROR_UNKNOWN' || (r as Any).error)) { lastErr = new Error('send-failed'); continue; }
-      return { sent: true };
-    } catch (e) { lastErr = e; }
+// ---- Silent sending (strategy chain). Module names/signatures are UNVERIFIED guesses: use send:probe to see what exists. ----
+const sleepMs = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const isBlockedId = (id: string, allowGroup = false) => (!allowGroup && id.endsWith('@g.us')) || id.includes('broadcast') || id.startsWith('status@') || id.endsWith('@newsletter');
+
+/** Find the Chat model; create it (numbers with no chat yet) via WAWebFindChatAction. Returns undefined when impossible. */
+async function resolveChat(chatId: string): Promise<Any> {
+  let chat = findChat(chatId);
+  if (chat) return chat;
+  const coll = store.collections?.Chat;
+  const widObj = (() => {
+    try { const w = req('WAWebWidFactory'); return typeof w?.createWid === 'function' ? w.createWid(chatId) : undefined; } catch { return undefined; }
+  })();
+  try { chat = widObj ? coll?.get?.(widObj) : coll?.get?.(chatId); } catch { /* ignore */ }
+  if (chat) return chat;
+  try {
+    const fa = req('WAWebFindChatAction');
+    const fn = fa?.findOrCreateLatestChat ?? fa?.findChat;
+    if (widObj && typeof fn === 'function') {
+      const r = await fn(widObj);
+      chat = r?.chat ?? r;
+      if (chat && chat.id) return chat;
+    }
+  } catch { /* ignore */ }
+  try { if (widObj && typeof coll?.find === 'function') { const r = await coll.find(widObj); if (r) return r; } } catch { /* ignore */ }
+  return findChat(chatId);
+}
+
+/** True when a matching fromMe text message (same body, recent) shows up in the chat's loaded messages within `waitMs`. */
+async function verifySent(chat: Any, text: string, since: number, waitMs = 10_000): Promise<boolean> {
+  const end = Date.now() + waitMs;
+  const want = text.trim();
+  do {
+    for (const m of msgsOf(chat)) {
+      if (!m?.id?.fromMe || typeof m.t !== 'number') continue;
+      if (toMs(m.t) >= since - 3000 && typeof m.body === 'string' && m.body.trim() === want) return true;
+    }
+    await sleepMs(500);
+  } while (Date.now() < end);
+  return false;
+}
+
+const API_NAMES: Array<[string, string]> = [
+  ['WAWebChatSendMessages', 'sendTextMsgToChat'], ['WAWebSendTextMsgChatAction', 'sendTextMsgToChat'],
+  ['WAWebChatSendMessages', 'addAndSendTextMsg'], ['WAWebMessageSender', 'sendTextMsgToChat'], ['WAWebMessageSender', 'addAndSendTextMsg'],
+];
+const SENDERR = (r: Any): boolean => !!r && typeof r === 'object' && (r.messageSendResult === 'ERROR_UNKNOWN' || !!r.error);
+
+async function sendViaApi(chat: Any, text: string): Promise<{ method: string } | { error: string }> {
+  const tries: Array<[string, () => unknown]> = [];
+  for (const [mod, fn] of API_NAMES) {
+    const m = req(mod);
+    if (typeof m?.[fn] === 'function') tries.push([`${mod}.${fn}`, () => m[fn](chat, text)]);
   }
-  throw new Error(lastErr instanceof Error && lastErr.message ? 'send-failed' : 'send-unavailable');
+  if (typeof chat?.sendMessage === 'function') tries.push(['chat.sendMessage', () => chat.sendMessage(text)]);
+  if (!tries.length) return { error: 'send-unavailable' };
+  let failed = false;
+  for (const [name, fn] of tries) {
+    try {
+      const r = await fn();
+      if (SENDERR(r)) { failed = true; continue; }
+      return { method: name };
+    } catch { failed = true; }
+  }
+  return { error: failed ? 'send-failed' : 'send-unavailable' };
+}
+
+const activeChat = (): Any => { try { return store.collections?.Chat?.getActive?.() ?? chatsColl().find((c) => c?.active); } catch { return undefined; } };
+async function openChat(chat: Any): Promise<boolean> {
+  try {
+    const cmd = req('WAWebCmd');
+    const host = cmd?.Cmd ?? cmd;
+    const fn = host?.openChatBottom ?? host?.openChatAt;
+    if (typeof fn !== 'function') return false;
+    await fn.call(host, chat);
+    for (let i = 0; i < 20; i++) { if (document.querySelector('footer [contenteditable="true"]')) return true; await sleepMs(150); }
+  } catch { /* ignore */ }
+  return false;
+}
+function clickSend(): boolean {
+  const b = document.querySelector<HTMLElement>('footer button[aria-label="Kirim"], footer button[aria-label="Send"], footer [data-icon="send"], footer [data-icon="wds-ic-send-filled"]');
+  const el = (b?.closest('button') as HTMLElement | null) ?? b;
+  if (!el) return false;
+  el.click();
+  return true;
+}
+/** VISIBLE fallback: briefly opens the target chat, inserts via the shared composer helper, clicks Send, then restores the previous chat. */
+async function sendViaDom(chat: Any, text: string): Promise<{ method: string } | { error: string }> {
+  const prev = activeChat();
+  try {
+    if (!(await openChat(chat))) return { error: 'send-unavailable' };
+    const r = await insertIntoComposer(text, { mode: 'empty-only' });
+    if (!r.ok) return { error: r.reason === 'composer-not-empty' ? 'composer-busy' : 'send-unavailable' };
+    await sleepMs(150);
+    if (!clickSend()) return { error: 'send-unavailable' };
+    return { method: 'dom-macro' };
+  } finally {
+    if (prev && prev !== chat) { try { await openChat(prev); } catch { /* ignore */ } }
+  }
+}
+
+/**
+ * Strategy chain: (1) internal API without opening the chat UI, (2) DOM macro only when `allowDom`. Never fakes success:
+ * `verified` says whether the message was actually seen in the chat afterwards. Throws a code ('send-unavailable',
+ * 'send-failed', 'chat-not-found', 'send-rejected') when nothing sent.
+ */
+async function sendText(chatId: string, text: string, allowDom = false, verify = true, group = false): Promise<SendResult> {
+  if (!text.trim() || isBlockedId(chatId, group)) throw new Error('send-rejected'); // groups only when the auto-reply engine asks (group:true)
+  const chat = await resolveChat(chatId);
+  if (!chat) throw new Error('chat-not-found');
+  const since = Date.now();
+  let res = await sendViaApi(chat, text);
+  if ('error' in res && allowDom) res = await sendViaDom(chat, text);
+  if ('error' in res) throw new Error(res.error);
+  const verified = verify ? await verifySent(chat, text, since) : false;
+  return { ok: true, method: res.method, verified };
+}
+
+// ---- send:probe: report what exists, never sends ----
+function fnItem(group: string, name: string, v: Any, fn: string): ProbeItem {
+  const t = v?.[fn];
+  return { group, name: `${name}.${fn}`, found: t !== undefined && t !== null, type: t === undefined || t === null ? '-' : typeof t };
+}
+function probe(): ProbeResult {
+  const items: ProbeItem[] = [];
+  const add = (group: string, mod: string, fns: string[]) => {
+    let m: Any;
+    try { m = req(mod); } catch { m = undefined; }
+    items.push({ group, name: mod, found: !!m, type: m ? typeof m : '-' });
+    for (const f of fns) items.push(fnItem(group, mod, m, f));
+  };
+  const c = store.collections;
+  items.push({ group: 'Koleksi', name: 'WAWebCollections', found: !!c, type: c ? typeof c : '-' });
+  for (const k of ['Chat', 'Contact', 'GroupMetadata', 'Label', 'Msg']) items.push(fnItem('Koleksi', 'WAWebCollections', c, k));
+  for (const f of ['get', 'find', 'getModelsArray', 'getActive']) items.push(fnItem('Pencarian chat', 'Collections.Chat', c?.Chat, f));
+  add('Pencarian chat', 'WAWebFindChatAction', ['findOrCreateLatestChat']);
+  add('Pencarian chat', 'WAWebWidFactory', ['createWid']);
+  add('Kirim pesan', 'WAWebChatSendMessages', ['sendTextMsgToChat', 'addAndSendTextMsg']);
+  add('Kirim pesan', 'WAWebSendTextMsgChatAction', ['sendTextMsgToChat']);
+  add('Kirim pesan', 'WAWebMessageSender', ['sendTextMsgToChat', 'addAndSendTextMsg']);
+  const sample = chatsColl()[0];
+  items.push(fnItem('Kirim pesan', 'chat (contoh)', sample, 'sendMessage'));
+  add('Makro DOM', 'WAWebCmd', []);
+  const cmd = req('WAWebCmd');
+  items.push(fnItem('Makro DOM', 'WAWebCmd.Cmd', cmd?.Cmd ?? cmd, 'openChatBottom'));
+  add('Grup', 'WAWebGroupQueryJob', ['queryAndUpdateGroupMetadataById', 'queryGroupMetadata']);
+  items.push(fnItem('Grup', 'chat (contoh)', sample, 'groupMetadata'));
+  items.push(fnItem('Label', 'WAWebCollections', c, 'Label'));
+  add('Cek nomor (check:registered)', 'WAWebQueryExist', ['queryExists', 'queryExist']);
+  add('Akun', 'WAWebUserPrefsMeUser', ['getMaybeMePnUser', 'getMaybeMeLidUser', 'getMaybeMeUser']);
+  return { items, accountId: accountId(), store: !!c?.Chat, hidden: document.hidden };
+}
+
+/** Sends the fixed test text to the account's own chat (self-chat). The caller must have asked for explicit confirmation. */
+async function selfTest(allowDom: boolean): Promise<SendResult> {
+  const me = accountId();
+  if (!me) throw new Error('account-unknown');
+  const id = /@/.test(me) ? me : `${me}@c.us`;
+  return sendText(id, 'Tes WhatsApp Web Toolkit', allowDom, true);
 }
 
 /**
@@ -404,9 +571,13 @@ async function handle(r: BridgeRequest): Promise<BridgeResponse> {
     case 'activity:scan':
       return { id: r.id, ok: true, data: scanActivity() };
     case 'inbox:poll':
-      return { id: r.id, ok: true, data: pollInbox(Number(r.sinceTs) || 0) };
+      return { id: r.id, ok: true, data: pollInbox(Number(r.sinceTs) || 0, r.includeGroups === true) };
     case 'send:text':
-      return { id: r.id, ok: true, data: await sendText(r.chatId, r.text) };
+      return { id: r.id, ok: true, data: await sendText(r.chatId, r.text, r.allowDom === true, r.verify !== false, r.group === true) };
+    case 'send:probe':
+      return { id: r.id, ok: true, data: probe() };
+    case 'send:self-test':
+      return { id: r.id, ok: true, data: await selfTest(r.allowDom === true) };
     case 'check:registered':
       return { id: r.id, ok: true, data: await checkRegistered(Array.isArray(r.phones) ? r.phones : []) };
     case 'memory:trim':

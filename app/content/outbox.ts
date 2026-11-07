@@ -3,6 +3,7 @@ import type { PingResult, RegisteredResult } from '../shared/messages';
 import { isBlockedTarget } from '../shared/outbox-logic';
 import type { NextItem, OutboxItem } from '../shared/outbox-types';
 import { call } from './bridge';
+import { sendSilent } from './send-settings';
 import { insertErrorText, insertIntoComposer, showToast } from './composer-insert';
 
 export interface OutboxState {
@@ -67,7 +68,7 @@ async function sendAuto(item: OutboxItem, checkRegistered: boolean): Promise<voi
     } catch { /* unknown -> try sending anyway */ }
   }
   try {
-    await call({ type: 'send:text', chatId, text: item.text }, 30_000);
+    await sendSilent(chatId, item.text, { timeoutMs: 45_000 });
     state.sent++;
     await report(item.id, 'sent', { chatId });
   } catch (e) {

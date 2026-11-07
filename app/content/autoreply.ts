@@ -1,9 +1,10 @@
 import { ROT_KEY, sanitizeRotStore, type RotStore } from '../shared/rotation';
 import { call } from './bridge';
+import { sendSilent } from './send-settings';
 import { insertErrorText, insertIntoComposer, type InsertResult } from './composer-insert';
 import { IS_FULL } from '../shared/credit';
 import { phoneFromChatId } from '../shared/crm-logic';
-import { decide, overRateLimit } from '../shared/autoreply-logic';
+import { decide, isGroupKey, overRateLimit, scopeOf } from '../shared/autoreply-logic';
 import {
   AR_GLOBAL_KEY, DEFAULT_AR_GLOBAL, type ArCtx, type ArGlobal, type ArLogEntry, type ArMsg, type ArRule, type InboxItem,
 } from '../shared/autoreply-types';
@@ -127,13 +128,15 @@ function varsFor(ctx: ArCtx, item: InboxItem): TplVars {
   };
   const nama = ctx.name || item.name;
   if (nama) v.nama = nama;
+  if (item.isGroup) { v.pengirim = item.authorName || phoneFromChatId(item.author ?? '') || ''; v.grup = item.groupName || item.name; if (!v.pengirim) delete v.pengirim; }
+  else if (nama) v.pengirim = nama;
   if (accountName) v.akun = accountName;
   return v;
 }
 
 // ---------- sending ----------
 async function freshItem(chatId: string): Promise<InboxItem | undefined> {
-  const items = await call<InboxItem[]>({ type: 'inbox:poll', sinceTs: 0 }, 15_000);
+  const items = await call<InboxItem[]>({ type: 'inbox:poll', sinceTs: 0, includeGroups: true }, 15_000);
   return items.find((i) => i.chatId === chatId);
 }
 
@@ -151,13 +154,13 @@ function schedule(item: InboxItem, chatKey: string, rule: ArRule, text: string, 
       const fresh = await freshItem(item.chatId);
       if (!fresh || fresh.msgId !== item.msgId) return void (await skipWith('ada pesan baru, dibatalkan'));
       if ((fresh.lastOutTs ?? 0) >= item.ts) return void (await skipWith('sudah dibalas manual'));
-      if (overRateLimit(live, log, Date.now())) return void (await skipWith('batas per jam tercapai'));
+      if (overRateLimit(live, log, Date.now(), isGroupKey(item.chatId))) return void (await skipWith('batas per jam tercapai'));
       try {
-        await call({ type: 'send:text', chatId: item.chatId, text }, 20_000);
-        await record({ accountId: accountId ?? '', chatKey, chatName: item.name, ruleId: rule.id, ruleName: rule.name, action: 'sent', reason: 'terkirim otomatis', text });
+        const r = await sendSilent(item.chatId, text, { group: isGroupKey(item.chatId) });
+        await record({ accountId: accountId ?? '', chatKey, chatName: item.name, ruleId: rule.id, ruleName: rule.name, action: 'sent', reason: `terkirim otomatis (${r.method}${r.verified ? ', terverifikasi' : ', belum terverifikasi'})`, text, author: item.author });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        if (/send-unavailable/.test(msg)) { sendAvailable = false; emit(); }
+        if (/send-unavailable/.test(msg) && sendAvailable) { sendAvailable = false; emit(); toast('Kirim senyap tidak tersedia di WhatsApp Web ini: balasan dijadikan draft. Jalankan Diagnostik pengirim di halaman Auto-Reply.'); } // one notice, then draft-only
         await skipWith(`gagal kirim: ${msg}`);
       }
       await sleep(3000 + Math.random() * 4000); // spacing between consecutive sends
@@ -191,10 +194,14 @@ async function handleItem(item: InboxItem) {
   const d = decide({
     rotation: rot, rules, now, log, lastOutboundTs: lastOut, vars: varsFor(ctx, item),
     canAutoSend: IS_FULL && sendAvailable && getAutoReplyState().autoSend,
-    inbound: { chatKey, text: item.text, ts: item.ts, isGroup: false, isNewLead: ctx.isNewLead, optOut: ctx.optOut },
+    inbound: {
+      chatKey, text: item.text, ts: item.ts, isGroup: !!item.isGroup, isNewLead: ctx.isNewLead, optOut: ctx.optOut,
+      author: item.author, groupName: item.groupName, mentionedMe: item.mentionedMe, quotedMe: item.quotedMe, isBot: item.isBot,
+      fromMe: !!item.author && !!accountId && item.author.split('@')[0] === accountId.split('@')[0],
+    },
   });
   if (d.rule && d.rotState) { rot[d.rule.id] = d.rotState; void saveRot(rot); }
-  const base = { accountId, chatKey, chatName: ctx.name || item.name, ruleId: d.rule?.id ?? '', ruleName: d.rule?.name ?? '' };
+  const base = { accountId, chatKey, chatName: (item.isGroup ? item.groupName : '') || ctx.name || item.name, ruleId: d.rule?.id ?? '', ruleName: d.rule?.name ?? '', author: item.isGroup ? item.author : undefined };
   if (d.action === 'skip') {
     if (d.rule) await record({ ...base, action: 'skipped', reason: d.reason, text: '' });
     return;
@@ -245,7 +252,8 @@ async function tick() {
     const p = await call<PingResult>({ type: 'ping' }, 5000);
     if (!p.accountId || !p.store) return;
     accountId = p.accountId;
-    const items = await call<InboxItem[]>({ type: 'inbox:poll', sinceTs }, 15_000);
+    const wantGroups = rules.some((r) => r.enabled && scopeOf(r) !== 'personal');
+    const items = await call<InboxItem[]>({ type: 'inbox:poll', sinceTs, includeGroups: wantGroups }, 15_000);
     for (const it of items) await handleItem(it);
   } catch (e) {
     if (/context invalidated/i.test(String(e))) teardown();

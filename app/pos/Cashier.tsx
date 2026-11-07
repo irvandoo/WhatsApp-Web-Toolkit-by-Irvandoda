@@ -5,7 +5,9 @@ import {
   ORDER_STATUSES, PAY_LABEL, PAY_METHODS, STATUS_LABEL,
   type DiscountType, type Order, type OrderItem, type OrderStatus, type Payment, type PayMethod, type PosSettings, type Product,
 } from '../shared/pos-types';
+import { availableFor, creditFromOrder, isCodeProduct, repriceLine, resolveUnitPrice, stockShortfalls, totalStock, TYPE_LABEL, typeOf } from '../shared/pos-products-logic';
 import { ScrollTable } from '../shared/ui/ScrollTable';
+import './products/products.css';
 import { send } from './util';
 
 interface Props { products: Product[]; contacts: Contact[]; settings: PosSettings; editing: Order | null; onSaved: (o: Order) => void; onCancel: () => void }
@@ -29,6 +31,9 @@ export function Cashier({ products, contacts, settings, editing, onSaved, onCanc
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const qRef = useRef<HTMLInputElement>(null);
+  const [pick, setPick] = useState<Product | null>(null);
+  const [override, setOverride] = useState(false);
+  const byId = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
 
   const t = useMemo(() => computeTotals({ items, discountType: dType, discountValue: dVal, shipping, taxPct, payments }), [items, dType, dVal, shipping, taxPct, payments]);
 
@@ -37,11 +42,24 @@ export function Cashier({ products, contacts, settings, editing, onSaved, onCanc
     return products.filter((p) => p.active && (!s || p.name.toLowerCase().includes(s) || p.sku.toLowerCase().includes(s))).slice(0, 60);
   }, [products, q]);
 
-  const addProduct = (p: Product) => {
+  const addProduct = (p: Product, variantId?: string | null) => {
+    if (typeOf(p) === 'fisik' && p.variants?.length && !variantId) { setPick(p); return; }
+    setPick(null);
+    const v = variantId ? p.variants?.find((x) => x.id === variantId) : undefined;
+    const av = availableFor(p, variantId);
+    const inCart = items.filter((x) => x.productId === p.id && (x.variantId ?? null) === (variantId ?? null)).reduce((n, x) => n + x.qty, 0);
+    if (av != null && inCart + 1 > av + (creditFromOrder(e)[`${p.id}::${variantId ?? ''}`] ?? 0) && !override) {
+      setErr(`Stok ${p.name}${v ? ` (${v.name})` : ''} tidak cukup (tersedia ${av}). Aktifkan "Izinkan jual melebihi stok" untuk melanjutkan.`);
+      return;
+    }
+    setErr('');
     setItems((cur) => {
-      const i = cur.findIndex((x) => x.productId === p.id);
-      if (i >= 0) return cur.map((x, j) => (j === i ? { ...x, qty: x.qty + 1 } : x));
-      return [...cur, { productId: p.id, sku: p.sku, name: p.name, qty: 1, price: p.price, cost: p.cost, discount: 0 }];
+      const i = cur.findIndex((x) => x.productId === p.id && (x.variantId ?? null) === (variantId ?? null));
+      if (i >= 0) return cur.map((x, j) => (j === i ? repriceLine(x, p, x.qty + 1) : x));
+      return [...cur, {
+        productId: p.id, sku: v?.sku || p.sku, name: p.name, qty: 1, price: resolveUnitPrice(p, 1, variantId).price, cost: v?.cost ?? p.cost, discount: 0,
+        ...(v ? { variantId: v.id, variantName: v.name } : {}),
+      }];
     });
   };
   const addFree = () => {
@@ -56,7 +74,11 @@ export function Cashier({ products, contacts, settings, editing, onSaved, onCanc
     const hit = exact ?? (matches.length === 1 ? matches[0] : undefined);
     if (hit) { addProduct(hit); setQ(''); } else if (!matches.length) addFree();
   };
-  const patchItem = (i: number, p: Partial<OrderItem>) => setItems((c) => c.map((x, j) => (j === i ? { ...x, ...p } : x)));
+  const patchItem = (i: number, p: Partial<OrderItem>) => setItems((c) => c.map((x, j) => {
+    if (j !== i) return x;
+    if (p.qty !== undefined && x.productId) return { ...repriceLine(x, byId.get(x.productId), p.qty), ...p, price: p.price ?? repriceLine(x, byId.get(x.productId), p.qty).price };
+    return { ...x, ...p };
+  }));
 
   const onName = (v: string) => {
     setName(v);
@@ -71,7 +93,10 @@ export function Cashier({ products, contacts, settings, editing, onSaved, onCanc
   };
 
   const save = async (asStatus?: OrderStatus) => {
-    setErr(''); setBusy(true);
+    setErr('');
+    const short = (asStatus ?? status) === 'draft' || (asStatus ?? status) === 'cancelled' || override ? [] : stockShortfalls(items, products, creditFromOrder(e));
+    if (short.length) { setErr('Stok tidak cukup: ' + short.map((x) => `${x.name} (butuh ${x.need}, tersedia ${x.available})`).join('; ')); return; }
+    setBusy(true);
     try {
       const body = {
         items, contactKey, customerName: name.trim(), customerPhone: phone.trim(), discountType: dType, discountValue: dVal, shipping, taxPct, notes, method,
@@ -89,13 +114,28 @@ export function Cashier({ products, contacts, settings, editing, onSaved, onCanc
         <input ref={qRef} autoFocus placeholder="Cari / ketik SKU lalu Enter" value={q} onChange={(ev) => setQ(ev.target.value)} onKeyDown={onSearchKey} />
         <div className="pgrid">
           {matches.map((p) => (
-            <button key={p.id} className="pcard" onClick={() => addProduct(p)} disabled={p.stock != null && p.stock <= 0} title={p.sku}>
+            <button key={p.id} className="pcard" onClick={() => addProduct(p)} disabled={!override && (() => { const st = totalStock(p, isCodeProduct(p) ? p.stock ?? 0 : undefined); return st != null && st <= 0; })()} title={p.sku}>
               {p.photo ? <img src={p.photo} alt="" /> : <span className="ph" />}
-              <b>{p.name}</b><small>{fmtIdr(p.price)}</small>
-              <small className="mut">{p.stock == null ? p.sku : `Stok ${p.stock}`}</small>
+              <b>{p.name}</b><small><span className={'pm-badge ' + typeOf(p)}>{TYPE_LABEL[typeOf(p)]}</span> {fmtIdr(p.price)}{p.tiers?.length ? ' +grosir' : ''}</small>
+              <small className="mut">{(() => { const st = totalStock(p, isCodeProduct(p) ? p.stock ?? 0 : undefined); return st == null ? p.sku : `Stok ${st}`; })()}{p.variants?.length ? ` · ${p.variants.length} varian` : ''}</small>
+              {typeOf(p) === 'digital' && p.autoDeliver !== false && <small className="mut">Dikirim otomatis</small>}
             </button>
           ))}
         </div>
+        {pick && (
+          <div className="pm-card">
+            <b>Pilih varian: {pick.name}</b>
+            <div className="bar">
+              {pick.variants!.map((v) => (
+                <button key={v.id} disabled={!override && v.stock != null && v.stock <= 0} onClick={() => addProduct(pick, v.id)}>
+                  {v.name} · {fmtIdr(v.price ?? pick.price)} · {v.stock == null ? '∞' : `stok ${v.stock}`}
+                </button>
+              ))}
+              <button onClick={() => setPick(null)}>Batal</button>
+            </div>
+          </div>
+        )}
+        <label className="chk"><input type="checkbox" checked={override} onChange={(ev) => setOverride(ev.target.checked)} /> Izinkan jual melebihi stok</label>
         {q.trim() && <button onClick={addFree}>+ Item bebas: "{q.trim()}"</button>}
       </section>
 
@@ -116,7 +156,7 @@ export function Cashier({ products, contacts, settings, editing, onSaved, onCanc
           <tbody>
             {items.map((it, i) => (
               <tr key={i}>
-                <td className="wrap">{it.productId ? it.name : <input value={it.name} onChange={(ev) => patchItem(i, { name: ev.target.value })} />}<br /><small className="mut">{it.sku}</small></td>
+                <td className="wrap">{it.productId ? it.name : <input value={it.name} onChange={(ev) => patchItem(i, { name: ev.target.value })} />}{it.variantName && <small> ({it.variantName})</small>}<br /><small className="mut">{it.sku}</small>{it.productId && typeOf(byId.get(it.productId)) === 'digital' && <small className="mut"> · Dikirim otomatis</small>}</td>
                 <td><input className="n" type="number" min={0.01} step="any" value={it.qty} onChange={(ev) => patchItem(i, { qty: Number(ev.target.value) })} /></td>
                 <td><input className="n w" type="number" min={0} value={it.price} onChange={(ev) => patchItem(i, { price: Math.max(0, Math.round(Number(ev.target.value) || 0)) })} /></td>
                 <td><input className="n w" type="number" min={0} value={it.discount} onChange={(ev) => patchItem(i, { discount: Math.max(0, Math.round(Number(ev.target.value) || 0)) })} /></td>

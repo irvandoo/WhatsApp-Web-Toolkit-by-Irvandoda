@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Contact } from '../shared/crm-types';
 import { db } from '../shared/db';
 import { DEFAULT_SETTINGS, type Order, type PosSettings, type Product } from '../shared/pos-types';
-import { Catalog } from './Catalog';
+import { Products } from './products/Products';
 import { Cashier } from './Cashier';
 import { Orders } from './Orders';
 import { Report } from './Report';
@@ -10,7 +10,7 @@ import { Settings } from './Settings';
 import { useLive } from './util';
 
 type Tab = 'kasir' | 'pesanan' | 'katalog' | 'laporan' | 'pengaturan';
-const TABS: [Tab, string][] = [['kasir', 'Kasir'], ['pesanan', 'Pesanan'], ['katalog', 'Katalog'], ['laporan', 'Laporan'], ['pengaturan', 'Pengaturan']];
+const TABS: [Tab, string][] = [['kasir', 'Kasir'], ['pesanan', 'Pesanan'], ['katalog', 'Produk'], ['laporan', 'Laporan'], ['pengaturan', 'Pengaturan']];
 
 export function App() {
   const [tab, setTab] = useState<Tab>('kasir');
@@ -34,7 +34,7 @@ export function App() {
           onSaved={(o) => { resetCash(); setSelected(o.id); setTab('pesanan'); }} onCancel={resetCash} />
       )}
       {tab === 'pesanan' && <Orders orders={orders} settings={settings} selectedId={selected} onSelect={setSelected} onEdit={(o) => { setEditing(o); setTab('kasir'); }} />}
-      {tab === 'katalog' && <Catalog products={products} />}
+      {tab === 'katalog' && <Products products={products} />}
       {tab === 'laporan' && <Report orders={orders} />}
       {settingsLive && tab === 'pengaturan' && <Settings settings={settings} />}
       </div>

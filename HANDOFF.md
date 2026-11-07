@@ -3,7 +3,7 @@
 Dokumen serah terima untuk melanjutkan pekerjaan di sesi/akun Claude lain. Terakhir diperbarui: 7 Nov 2026.
 Baca juga `CLAUDE.md` (konvensi proyek) dan `README.md` (gambaran fitur untuk pengguna).
 
-> **STATUS CHECKPOINT TERAKHIR (WIP):** commit ini diambil saat beberapa subagent masih mengedit. `npm run typecheck` sempat gagal di `app/shared/presets.ts` (field `scope` baru pada aturan auto-reply belum ada di preset — perbaiki dengan menambahkan `scope: 'personal'` pada tiap `PresetRule`/`buildRules`). File build di root repo masih **build store lama** (bukan full) sampai `npm run build:full` berhasil dijalankan. Langkah pertama sesi berikutnya: perbaiki typecheck → `npm test` → `npm run build:full` → commit → push.
+> **STATUS CHECKPOINT TERAKHIR (WIP):** typecheck bersih, 363 tes lolos, `build:full` ke root berhasil saat commit ini. Empat subagent (auto-reply scope + kirim senyap + diagnostik, Hub Akun QR/CRUD, POS produk fisik/digital, ekspor laporan Analitik) masih mengedit saat commit, jadi sebagian file mereka belum lengkap/terpasang. Cek bagian 6, lalu `npm run typecheck && npm test && npm run build:full`, commit, push.
 
 ## 1. Ringkasan proyek
 Ekstensi Chrome (Manifest V3) untuk `https://web.whatsapp.com/`, fokus marketing WhatsApp. Pemilik: Irvando Demas Arifiandani (`irvandoda`, irvando.d.a@gmail.com, irvandoda.web.id). Repo: https://github.com/irvandoo/WhatsApp-Web-Toolkit-by-Irvandoda (publik, branch `main`).

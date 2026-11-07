@@ -1,10 +1,12 @@
 import { db } from '../shared/db';
-import { applyDelta, cleanPrefix, crmStageFor, finalizeOrder, nextInvoice, nextSku, stockPlan } from '../shared/pos-logic';
+import { cleanPrefix, crmStageFor, finalizeOrder, nextInvoice } from '../shared/pos-logic';
+import { generateSku, typeOf, validateProduct } from '../shared/pos-products-logic';
 import {
   DEFAULT_SETTINGS, ORDER_STATUSES, PAY_METHODS,
   type Order, type OrderInput, type PosMsg, type PosSettings, type Product,
 } from '../shared/pos-types';
 import { handleCrm } from './crm';
+import { addCodes, applyOrderStock, ensureCategory, finalizeProduct, handleProductsMsg, reconcileLicenses, syncPool } from './pos-products';
 
 export const isPosMsg = (m: unknown): m is PosMsg =>
   !!m && typeof (m as { kind?: unknown }).kind === 'string' && (m as { kind: string }).kind.startsWith('pos:');
@@ -24,7 +26,7 @@ async function getSettings(): Promise<PosSettings> {
 function cleanProduct(p: Partial<Product> & { name: string }, prev: Product | undefined, sku: string, now: number): Product {
   const has = <K extends keyof Product>(k: K) => k in p && p[k] !== undefined;
   const photo = has('photo') ? p.photo : prev?.photo ?? null;
-  return {
+  return finalizeProduct({
     id: prev?.id ?? p.id ?? uid(),
     sku,
     name: p.name.trim().slice(0, 200),
@@ -38,40 +40,53 @@ function cleanProduct(p: Partial<Product> & { name: string }, prev: Product | un
     photo: typeof photo === 'string' && photo.startsWith('data:image/') && photo.length <= MAX_PHOTO ? photo : null,
     createdAt: prev?.createdAt ?? now,
     updatedAt: now,
-  };
+  }, p, prev);
 }
 
 async function upsertProduct(p: Partial<Product> & { name: string }): Promise<Product> {
   if (!str(p.name).trim()) throw new Error('Nama produk wajib diisi');
-  return db.transaction('rw', db.products, async () => {
+  return db.transaction('rw', db.products, db.categories, db.licenseCodes, async () => {
     const all = await db.products.toArray();
     const prev = p.id ? all.find((x) => x.id === p.id) : undefined;
     const want = str(p.sku).trim();
-    const sku = want || prev?.sku || nextSku(all.map((x) => x.sku));
+    const type = p.type ?? typeOf(prev);
+    const sku = want || prev?.sku || generateSku(all.map((x) => x.sku), type);
     if (all.some((x) => x.sku.toLowerCase() === sku.toLowerCase() && x.id !== prev?.id)) throw new Error(`SKU "${sku}" sudah dipakai`);
     const out = cleanProduct(p, prev, sku, Date.now());
+    const errs = validateProduct(out);
+    if (errs.length) throw new Error(errs[0]);
     await db.products.put(out);
+    await ensureCategory(out.category);
+    if (out.type === 'digital' && out.deliveryMode === 'kode') return { ...out, stock: await syncPool(out.id) };
     return out;
   });
 }
 
-async function importProducts(rows: Array<Partial<Product> & { name: string }>) {
-  return db.transaction('rw', db.products, async () => {
+async function importProducts(rows: Array<Partial<Product> & { name: string; codes?: string[] }>) {
+  return db.transaction('rw', db.products, db.categories, db.licenseCodes, async () => {
     const all = await db.products.toArray();
     const bySku = new Map(all.map((x) => [x.sku.toLowerCase(), x]));
     const skus = all.map((x) => x.sku);
     let created = 0, updated = 0, skipped = 0;
+    const errors: string[] = [];
     const now = Date.now();
-    for (const r of rows) {
+    for (const [i, r] of rows.entries()) {
       if (!str(r.name).trim()) { skipped++; continue; }
       const want = str(r.sku).trim();
       const prev = want ? bySku.get(want.toLowerCase()) : undefined;
-      const sku = want || nextSku(skus);
+      const sku = want || generateSku(skus, r.type ?? typeOf(prev));
       const out = cleanProduct({ ...r, id: undefined }, prev, sku, now);
+      const errs = validateProduct(out);
+      if (errs.length) { skipped++; errors.push(`Baris ${i + 1}: ${errs[0]}`); continue; }
       await db.products.put(out);
+      await ensureCategory(out.category);
+      if (out.type === 'digital' && out.deliveryMode === 'kode') {
+        if (Array.isArray(r.codes) && r.codes.length) await addCodes(out.id, r.codes.join('\n'));
+        await syncPool(out.id);
+      }
       if (!prev) { skus.push(sku); bySku.set(sku.toLowerCase(), out); created++; } else { bySku.set(sku.toLowerCase(), out); updated++; }
     }
-    return { created, updated, skipped };
+    return { created, updated, skipped, errors };
   });
 }
 
@@ -94,6 +109,7 @@ function sanitizePatch(p: Partial<Order>): Partial<Order> {
       productId: i.productId ? String(i.productId) : null, sku: str(i.sku), name: str(i.name).slice(0, 200) || 'Item',
       qty: typeof i.qty === 'number' && i.qty > 0 ? i.qty : 1, price: Math.max(0, int(i.price)),
       cost: i.cost == null ? null : Math.max(0, int(i.cost)), discount: Math.max(0, int(i.discount)),
+      ...(i.variantId ? { variantId: String(i.variantId), variantName: str(i.variantName).slice(0, 100) } : {}),
     }));
   }
   if (p.discountType === 'pct' || p.discountType === 'rp') o.discountType = p.discountType;
@@ -114,7 +130,7 @@ function sanitizePatch(p: Partial<Order>): Partial<Order> {
 /** Create (prevId undefined) or update. Stock + numbering + totals in one transaction; CRM link afterwards. */
 async function saveOrder(prevId: string | undefined, patch: Partial<Order>): Promise<Order> {
   const now = Date.now();
-  const saved = await db.transaction('rw', db.orders, db.products, db.posSettings, async () => {
+  const saved = await db.transaction('rw', db.orders, db.products, db.posSettings, db.stockMoves, db.licenseCodes, async () => {
     const prev = prevId ? await db.orders.get(prevId) : undefined;
     if (prevId && !prev) throw new Error('Order tidak ditemukan');
     let id = prev?.id, number = prev?.number;
@@ -126,13 +142,9 @@ async function saveOrder(prevId: string | undefined, patch: Partial<Order>): Pro
     }
     const merged = { ...(prev ?? baseOrder(now)), ...sanitizePatch(patch), id: id!, number: number! } as Order;
     if (!merged.items.length) throw new Error('Order belum punya item');
-    const out = finalizeOrder(merged, now, uid);
-    const plan = stockPlan(prev ?? null, out);
-    for (const [pid, d] of Object.entries(plan.deltas)) {
-      const p = await db.products.get(pid);
-      if (p && p.stock != null) await db.products.put({ ...p, stock: applyDelta(p.stock, d), updatedAt: now });
-    }
-    out.stockApplied = plan.applied;
+    let out = finalizeOrder(merged, now, uid);
+    out.stockApplied = await applyOrderStock(prev ?? null, out, now);
+    out = await reconcileLicenses(out, now); // digital codes + deliveryText (Lunas) / release (Batal)
     await db.orders.put(out);
     return out;
   });
@@ -172,17 +184,6 @@ async function deleteOrder(id: string) {
   return { ok: true };
 }
 
-async function adjustStock(id: string, delta?: number, set?: number | null): Promise<Product> {
-  return db.transaction('rw', db.products, async () => {
-    const p = await db.products.get(id);
-    if (!p) throw new Error('Produk tidak ditemukan');
-    const stock = set !== undefined ? (set == null ? null : int(set)) : p.stock == null ? null : p.stock + int(delta);
-    const out = { ...p, stock, updatedAt: Date.now() };
-    await db.products.put(out);
-    return out;
-  });
-}
-
 async function setSettings(patch: Partial<PosSettings>): Promise<PosSettings> {
   return db.transaction('rw', db.posSettings, async () => {
     const s = await getSettings();
@@ -215,9 +216,8 @@ export async function handlePos(m: PosMsg, sender?: chrome.runtime.MessageSender
   switch (m.kind) {
     case 'pos:product:upsert': return upsertProduct(m.product);
     case 'pos:product:list': return db.products.toArray();
-    case 'pos:product:delete': await db.products.delete(m.id); return { ok: true };
+    case 'pos:product:delete': await handleProductsMsg({ kind: 'pos:product:bulk', ids: [m.id], action: 'hapus' }); return { ok: true };
     case 'pos:product:import': return importProducts(m.rows);
-    case 'pos:stock:adjust': return adjustStock(m.id, m.delta, m.set);
     case 'pos:order:create': return saveOrder(undefined, m.order as OrderInput);
     case 'pos:order:update': return saveOrder(m.id, m.patch);
     case 'pos:order:list': {
@@ -236,5 +236,6 @@ export async function handlePos(m: PosMsg, sender?: chrome.runtime.MessageSender
     case 'pos:settings:get': return getSettings();
     case 'pos:settings:set': return setSettings(m.patch);
     case 'pos:draft': return relayDraft(m.text, sender?.tab?.id);
+    default: return handleProductsMsg(m);
   }
 }

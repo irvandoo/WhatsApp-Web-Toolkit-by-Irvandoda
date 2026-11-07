@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { decide, inCooldown, isForbiddenChat, isWithinSchedule, matchRule, nextDelayMs, overRateLimit, pickRule, validateRule } from './autoreply-logic';
+import {
+  decide, groupCfg, inCooldown, isForbiddenChat, isWithinSchedule, matchRule, needsMigration, nextDelayMs, normalizeRule, overRateLimit, pickRule, scopeAllows,
+  validateRule,
+} from './autoreply-logic';
+import { buildRules } from './presets-logic';
 import { newRule, type ArLogEntry, type ArRule } from './autoreply-types';
 
 const mk = (p: Partial<ArRule> = {}): ArRule => ({ ...newRule(0), id: 'r1', enabled: true, reply: 'Halo {nama}', ...p });
@@ -111,5 +115,144 @@ describe('decide rotation', () => {
   it('validates variant limits', () => {
     expect(validateRule(mk({ trigger: 'any', replyVariants: Array(11).fill('x') })).length).toBe(1);
     expect(validateRule(mk({ trigger: 'any', replyVariants: ['x'.repeat(1001)] })).length).toBe(1);
+  });
+});
+
+// ---------------- scope & group guards ----------------
+const GID = '1203@g.us';
+const gKey = `a|${GID}`;
+const gRule = (p: Partial<ArRule> = {}): ArRule => mk({
+  trigger: 'keyword', keywords: ['harga'], scope: 'group', grp: { allow: [{ id: GID, name: 'Grup A' }], deny: [], requireMention: true, groupCooldownMin: 10, maxPerHour: 6 }, ...p,
+});
+const gIn = (p = {}) => inbound({ chatKey: gKey, isGroup: true, author: '6285@c.us', groupName: 'Grup A', mentionedMe: true, text: 'harga?', ...p });
+const gBase = { now: NOW, log: [] as ArLogEntry[], lastOutboundTs: null as number | null, rng: () => 0 };
+
+describe('scope matrix', () => {
+  const trig: Array<ArRule['trigger']> = ['keyword', 'any', 'first-message', 'away-hours'];
+  it('personal / group / all x trigger types', () => {
+    for (const t of trig) {
+      const base = { trigger: t, keywords: ['harga'], schedule: { days: [3], from: '09:00', to: '17:00' } } as Partial<ArRule>;
+      const away = new Date(2026, 0, 7, 20, 0).getTime();
+      const okP = (r: ArRule) => matchRule(r, 'harga', { isNewLead: true, now: away, isGroup: false });
+      const okG = (r: ArRule) => matchRule(r, 'harga', { isNewLead: true, now: away, isGroup: true });
+      expect(okP(mk({ ...base, scope: 'personal' }))).toBe(true);
+      expect(okP(mk({ ...base, scope: 'group' }))).toBe(false);
+      expect(okP(mk({ ...base, scope: 'all' }))).toBe(true);
+      expect(okG(mk({ ...base, scope: 'personal' }))).toBe(false);
+      expect(okG(mk({ ...base, scope: 'group' }))).toBe(t === 'keyword');
+      expect(okG(mk({ ...base, scope: 'all' }))).toBe(t === 'keyword');
+    }
+  });
+  it('scopeAllows + missing scope = personal', () => {
+    expect(scopeAllows({ scope: 'all' }, true)).toBe(true);
+    expect(scopeAllows({ scope: undefined as never }, false)).toBe(true);
+    expect(scopeAllows({ scope: undefined as never }, true)).toBe(false);
+  });
+});
+
+describe('group guards in decide', () => {
+  it('replies in an allowed group when mentioned', () => {
+    expect(decide({ ...gBase, rules: [gRule()], inbound: gIn() }).action).toBe('draft');
+  });
+  it('personal-scope rule never answers groups', () => {
+    expect(decide({ ...gBase, rules: [mk({ trigger: 'any' })], inbound: gIn() }).action).toBe('skip');
+  });
+  it('requires mention or quote when enabled (default ON)', () => {
+    expect(decide({ ...gBase, rules: [gRule()], inbound: gIn({ mentionedMe: false }) }).reason).toMatch(/mention/);
+    expect(decide({ ...gBase, rules: [gRule()], inbound: gIn({ mentionedMe: false, quotedMe: true }) }).action).toBe('draft');
+    const off = gRule({ grp: { ...gRule().grp, requireMention: false } });
+    expect(decide({ ...gBase, rules: [off], inbound: gIn({ mentionedMe: false }) }).action).toBe('draft');
+  });
+  it('allow list required, deny wins, manual name entry works', () => {
+    const none = gRule({ grp: { ...gRule().grp, allow: [] } });
+    expect(decide({ ...gBase, rules: [none], inbound: gIn() }).reason).toMatch(/belum ada grup/);
+    expect(decide({ ...gBase, rules: [gRule()], inbound: gIn({ chatKey: 'a|999@g.us' }) }).reason).toMatch(/izin/);
+    const deny = gRule({ grp: { ...gRule().grp, deny: [{ id: GID, name: 'Grup A' }] } });
+    expect(decide({ ...gBase, rules: [deny], inbound: gIn() }).reason).toMatch(/tolak/);
+    const byName = gRule({ grp: { ...gRule().grp, allow: [{ id: '', name: 'grup a' }] } });
+    expect(decide({ ...gBase, rules: [byName], inbound: gIn() }).action).toBe('draft');
+  });
+  it('skips own messages, bots and unknown authors', () => {
+    expect(decide({ ...gBase, rules: [gRule()], inbound: gIn({ fromMe: true }) }).reason).toMatch(/akun sendiri/);
+    expect(decide({ ...gBase, rules: [gRule()], inbound: gIn({ isBot: true }) }).reason).toMatch(/bot/);
+    expect(decide({ ...gBase, rules: [gRule()], inbound: gIn({ author: undefined }) }).action).toBe('skip');
+  });
+  it('author cooldown and group-wide cooldown', () => {
+    const sentBy = (author: string, ago: number) => logE({ chatKey: gKey, author, ts: NOW - ago, ruleId: 'other' });
+    expect(decide({ ...gBase, log: [sentBy('6285@c.us', 60_000)], rules: [gRule()], inbound: gIn() }).reason).toMatch(/pengirim/);
+    expect(decide({ ...gBase, log: [sentBy('6286@c.us', 60_000)], rules: [gRule()], inbound: gIn() }).reason).toMatch(/jeda grup/);
+    expect(decide({ ...gBase, log: [sentBy('6286@c.us', 11 * 60_000)], rules: [gRule({ cooldownMin: 5 })], inbound: gIn() }).action).toBe('draft');
+  });
+  it('group cooldown floor 5 min cannot be lowered', () => {
+    expect(groupCfg({ grp: { groupCooldownMin: 0 } as never }).groupCooldownMin).toBe(5);
+    const log = [logE({ chatKey: gKey, author: 'x', ts: NOW - 4 * 60_000 })];
+    const r = gRule({ grp: { ...gRule().grp, groupCooldownMin: 1 } });
+    expect(decide({ ...gBase, log, rules: [r], inbound: gIn() }).reason).toMatch(/jeda grup/);
+  });
+  it('group hourly cap is separate from personal cap', () => {
+    const auto = gRule({ mode: 'auto', cooldownMin: 5, grp: { ...gRule().grp, maxPerHour: 2, groupCooldownMin: 5 } });
+    const old = (i: number) => logE({ chatKey: `a|g${i}@g.us`, author: 'z', ts: NOW - 20 * 60_000 });
+    expect(decide({ ...gBase, log: [old(1), old(2)], rules: [auto], inbound: gIn() }).reason).toMatch(/per jam/);
+    expect(decide({ ...gBase, log: [old(1)], rules: [auto], inbound: gIn() }).action).toBe('send');
+    const personal = [1, 2, 3].map((i) => logE({ chatKey: `a|${i}@c.us`, ts: NOW - 20 * 60_000 }));
+    expect(decide({ ...gBase, log: personal, rules: [auto], inbound: gIn() }).action).toBe('send');
+  });
+  it('group sends still respect canAutoSend and lastOutbound', () => {
+    expect(decide({ ...gBase, rules: [gRule({ mode: 'auto' })], inbound: gIn(), canAutoSend: false }).action).toBe('draft');
+    expect(decide({ ...gBase, lastOutboundTs: NOW, rules: [gRule()], inbound: gIn() }).reason).toBe('sudah dibalas');
+  });
+  it('scope all answers both chat types; broadcast/status stay forbidden', () => {
+    const all = gRule({ scope: 'all' });
+    expect(decide({ ...gBase, rules: [all], inbound: gIn() }).action).toBe('draft');
+    expect(decide({ ...gBase, rules: [all], inbound: inbound({ text: 'harga' }) }).action).toBe('draft');
+    expect(decide({ ...gBase, rules: [all], inbound: gIn({ chatKey: 'a|status@broadcast' }) }).action).toBe('skip');
+  });
+  it('template variables {pengirim} {grup}', () => {
+    const r = gRule({ reply: 'Halo {pengirim} di {grup}' });
+    const d = decide({ ...gBase, rules: [r], inbound: gIn(), vars: { pengirim: 'Budi', grup: 'Grup A' } });
+    expect(d.text).toBe('Halo Budi di Grup A');
+  });
+  it('opt-out still respected', () => {
+    expect(decide({ ...gBase, rules: [gRule()], inbound: gIn({ optOut: true }) }).reason).toMatch(/opt-out/);
+  });
+});
+
+describe('validateRule group scope', () => {
+  it('rejects non-keyword triggers for group/all', () => {
+    for (const scope of ['group', 'all'] as const) for (const t of ['any', 'first-message', 'away-hours'] as const) {
+      expect(validateRule(gRule({ scope, trigger: t, schedule: { days: [1], from: '09:00', to: '17:00' } })).join(' ')).toMatch(/Kata kunci/);
+    }
+    expect(validateRule(gRule())).toEqual([]);
+    expect(validateRule(mk({ trigger: 'any', scope: 'personal' }))).toEqual([]);
+  });
+  it('requires a group, min cooldown, short keywords, {grup} only for group', () => {
+    expect(validateRule(gRule({ grp: { ...gRule().grp, allow: [] } })).join(' ')).toMatch(/minimal satu grup/);
+    expect(validateRule(gRule({ grp: { ...gRule().grp, groupCooldownMin: 2 } })).join(' ')).toMatch(/minimal 5/);
+    expect(validateRule(gRule({ keywords: ['ab'] })).join(' ')).toMatch(/3 karakter/);
+    expect(validateRule(mk({ trigger: 'any', reply: 'di {grup}' })).join(' ')).toMatch(/grup/);
+    expect(validateRule(mk({ scope: 'bogus' as never, trigger: 'any' })).length).toBe(1);
+  });
+});
+
+describe('migration', () => {
+  it('old rules without scope/grp become personal with default guards', () => {
+    const old = { ...mk({ trigger: 'any' }) } as Partial<ArRule>;
+    delete old.scope; delete old.grp;
+    expect(needsMigration(old)).toBe(true);
+    const n = normalizeRule(old as ArRule);
+    expect(n.scope).toBe('personal');
+    expect(n.grp).toMatchObject({ requireMention: true, groupCooldownMin: 10, maxPerHour: 6, allow: [] });
+    expect(needsMigration(n)).toBe(false);
+    expect(normalizeRule(n)).toEqual(n);
+    expect(decide({ rules: [n], inbound: inbound(), now: NOW, log: [], lastOutboundTs: null, rng: () => 0 }).action).toBe('draft');
+  });
+  it('seeded/new/preset rules are personal', () => {
+    expect(newRule(0).scope).toBe('personal');
+    const rules = buildRules({
+      templates: [], stages: null, skipped: [], conflicts: [],
+      rules: [{ originalName: 'x', renamed: false, rule: { name: 'x', trigger: 'keyword', keywords: ['a'], matchMode: 'contains', reply: 'r', delaySec: [4, 12], cooldownMin: 360, maxPerHour: 20, onlyNewLeads: false } }],
+    }, 0);
+    expect(rules[0].scope).toBe('personal');
+    expect(rules[0].enabled).toBe(false);
   });
 });

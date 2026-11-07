@@ -1,9 +1,9 @@
 import type { ArRule } from './autoreply-types';
-import { newRule } from './autoreply-types';
+import { DEFAULT_GROUP_CFG, newRule } from './autoreply-types';
 import { validateShortcut } from './template-engine';
 
 export interface PresetTemplate { shortcut: string; title: string; category: string; body: string }
-export type PresetRule = Omit<ArRule, 'id' | 'order' | 'enabled' | 'mode' | 'excludeOptOut' | 'groups' | 'stopAfterHumanReply'>;
+export type PresetRule = Omit<ArRule, 'id' | 'order' | 'enabled' | 'mode' | 'excludeOptOut' | 'groups' | 'stopAfterHumanReply' | 'scope' | 'grp'>;
 export interface PresetPack {
   id: string; industry: string; title: string; description: string;
   templates: PresetTemplate[]; autoReplyRules: PresetRule[]; pipelineStages: string[]; tags: string[]; reminderIdeas: string[];
@@ -97,5 +97,6 @@ export function buildRules(plan: ApplyPlan, startOrder: number): ArRule[] {
   return plan.rules.map((p, i) => ({
     ...newRule(startOrder + i), ...p.rule, id: crypto.randomUUID(), order: startOrder + i,
     enabled: false, mode: 'draft' as const, excludeOptOut: true as const, groups: false as const, stopAfterHumanReply: true as const,
+    scope: 'personal' as const, grp: { ...DEFAULT_GROUP_CFG, allow: [], deny: [] }, // presets never touch groups
   }));
 }

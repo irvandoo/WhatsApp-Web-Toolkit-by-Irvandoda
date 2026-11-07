@@ -25,8 +25,10 @@ export type BridgeRequest =
   | { id: string; type: 'sync:loadEarlier'; chatId: string }
   | { id: string; type: 'memory:trim'; keepChatId?: string }
   | { id: string; type: 'activity:scan' }
-  | { id: string; type: 'inbox:poll'; sinceTs: number }
-  | { id: string; type: 'send:text'; chatId: string; text: string }
+  | { id: string; type: 'inbox:poll'; sinceTs: number; includeGroups?: boolean }
+  | { id: string; type: 'send:text'; chatId: string; text: string; allowDom?: boolean; verify?: boolean; group?: boolean }
+  | { id: string; type: 'send:probe' }
+  | { id: string; type: 'send:self-test'; allowDom?: boolean }
   | { id: string; type: 'check:registered'; phones: string[] };
 
 /** check:registered result per phone: registered null = unknown (WA internals unavailable). */
@@ -98,3 +100,16 @@ export type RcpMsg =
   | { kind: 'rcp:group-members'; groupId: string };
 /** background -> content (labels only; groups go through grp:exec). */
 export type RcpExec = { kind: 'rcp:exec'; op: 'labels' } | { kind: 'rcp:exec'; op: 'label-chats'; labelId: string };
+
+/** send:text result (adapter >= silent sending). `method` = which strategy actually sent; `verified` = message seen in the chat afterwards. */
+export interface SendResult { ok: boolean; method: string; verified: boolean; error?: string }
+/** Persisted silent-send settings (chrome.storage.local 'wwt-send'). */
+export interface SendSettings { allowDomMacro: boolean }
+export const SEND_SETTINGS_KEY = 'wwt-send';
+export const DEFAULT_SEND_SETTINGS: SendSettings = { allowDomMacro: false };
+/** send:probe result: what the adapter FOUND in WhatsApp Web internals (nothing is sent). */
+export interface ProbeItem { name: string; found: boolean; type: string; group: string }
+export interface ProbeResult { items: ProbeItem[]; accountId: string | null; store: boolean; hidden: boolean }
+/** Extension page -> background -> WA tab content (diag-bridge) -> adapter. */
+export type DiagMsg = { kind: 'diag:probe' } | { kind: 'diag:selftest'; allowDom?: boolean };
+export type DiagExec = { kind: 'diag:exec'; op: 'probe' } | { kind: 'diag:exec'; op: 'selftest'; allowDom?: boolean };

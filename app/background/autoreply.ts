@@ -2,6 +2,7 @@ import { db } from '../shared/db';
 import { phoneFromChatId } from '../shared/crm-logic';
 import { normStrategy } from '../shared/rotation';
 import { newRule, type ArCtx, type ArMsg, type ArRule } from '../shared/autoreply-types';
+import { groupCfg, needsMigration, normalizeRule, scopeOf, validateRule } from '../shared/autoreply-logic';
 
 export const isArMsg = (m: unknown): m is ArMsg =>
   !!m && typeof (m as { kind?: unknown }).kind === 'string' && (m as { kind: string }).kind.startsWith('ar:');
@@ -25,7 +26,13 @@ async function ensureSeed(): Promise<void> {
   await chrome.storage.local.set({ 'wwt-ar-seeded': true });
 }
 
-const sorted = async (): Promise<ArRule[]> => (await db.arRules.toArray()).sort((a, b) => a.order - b.order);
+/** Rules saved before group scope existed lack `scope`/`grp`: migrate them to 'personal' once (idempotent). */
+async function migrateRules(): Promise<void> {
+  const old = (await db.arRules.toArray()).filter((r) => needsMigration(r));
+  if (old.length) await db.arRules.bulkPut(old.map((r) => normalizeRule(r)));
+}
+
+const sorted = async (): Promise<ArRule[]> => (await db.arRules.toArray()).map(normalizeRule).sort((a, b) => a.order - b.order);
 
 /** Never trust editable-flag fields coming from the UI. */
 function sanitize(r: ArRule): ArRule {
@@ -34,6 +41,7 @@ function sanitize(r: ArRule): ArRule {
     ...r, replyVariants: (r.replyVariants ?? []).filter((v) => typeof v === 'string' && v.trim()).slice(0, 10).map((v) => v.slice(0, 1000)),
     rotation: normStrategy(r.rotation),
     excludeOptOut: true, groups: false, stopAfterHumanReply: true,
+    scope: scopeOf(r), grp: groupCfg(r),
     keywords: (r.keywords ?? []).map((k) => k.trim()).filter(Boolean),
     delaySec: [Math.max(0, Number(d[0]) || 0), Math.max(Number(d[0]) || 0, Number(d[1]) || 0)],
     cooldownMin: Math.max(0, Number(r.cooldownMin) || 0),
@@ -45,11 +53,14 @@ export async function handleAr(m: ArMsg): Promise<unknown> {
   switch (m.kind) {
     case 'ar:rules':
       await ensureSeed();
+      await migrateRules();
       return sorted();
     case 'ar:rule:upsert': {
       const prev = await db.arRules.get(m.rule.id);
       const order = prev?.order ?? (m.rule.order > 0 ? m.rule.order : (await db.arRules.count()));
       const r = sanitize({ ...m.rule, order });
+      // Group safety is enforced here too, not only in the editor: invalid group rules are saved DISABLED.
+      if (validateRule(r).length && scopeOf(r) !== 'personal') r.enabled = false;
       await db.arRules.put(r);
       return r;
     }
