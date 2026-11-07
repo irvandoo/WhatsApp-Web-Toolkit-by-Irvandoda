@@ -57,3 +57,8 @@ ul.safe li{margin-bottom:6px}
 .fillcol>.st-wrap{flex:1;min-height:0;display:flex}
 .fillcol>.st-wrap>.st-scroll{flex:1;max-height:none;min-width:0}
 .pane .st-wrap{margin-bottom:8px}
+.diag-out{white-space:pre-wrap;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:8px;font:12px/1.5 ui-monospace,Consolas,monospace;max-height:60vh;overflow:auto;margin-top:8px}
+.seg{display:inline-flex;border:1px solid var(--bd);border-radius:8px;overflow:hidden}
+.seg button{border:0;border-radius:0}
+.pill.scope{border-color:var(--ac);color:var(--ac)}
+.gp{margin-top:8px}

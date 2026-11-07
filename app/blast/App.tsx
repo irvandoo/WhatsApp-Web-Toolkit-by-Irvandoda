@@ -84,6 +84,7 @@ export function App() {
           teks yang sudah siap. Anda sisipkan ke chat lalu menekan Kirim sendiri. Pengiriman otomatis penuh hanya ada di versi Full.
         </div>
       )}
+      <div className="banner" role="note">Kirim senyap bergantung internal WhatsApp Web dan berisiko membuat akun dibatasi WhatsApp. <a href="../autoreply/index.html#diag" target="_blank" rel="noreferrer">Diagnostik pengirim: uji kemampuan kirim senyap</a></div>
       <nav role="tablist" aria-label="Menu blast">
         {tabs.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}
       </nav>

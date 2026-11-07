@@ -58,13 +58,13 @@ Semua modul muncul sebagai tombol di **navbar WhatsApp Web** dan terbuka sebagai
 
 | Modul | Isi |
 |---|---|
-| **Akun** | Dropdown ganti akun/sesi di tab yang sama (namespace virtual per tab, konsep ala SessionBox; satu akun aktif per tab) |
+| **Akun** | Dropdown ganti akun/sesi di tab yang sama (namespace virtual per tab; satu akun aktif per tab); Hub: tambah akun lalu scan QR, status live, CRUD penuh |
 | **Belum dibalas** | Lama menunggu, prioritas, sort & filter, badge jumlah |
-| **Auto-reply** | Aturan kata kunci / pesan pertama / di luar jam kerja, jeda acak, batas per jam, jeda ulang per chat, varian & rotasi pesan |
+| **Auto-reply** | Cakupan pribadi/grup/semua (pengaman grup ketat), kirim senyap + diagnostik pengirim, aturan kata kunci / pesan pertama / di luar jam kerja, jeda acak, batas per jam, jeda ulang per chat, varian & rotasi pesan |
 | **CRM** | Kanban, tag, catatan, pengingat, **lead intelligence** (skor keterlibatan, hot lead, momentum, prioritas tindak lanjut) |
-| **Analitik** | WA baru vs follow-up, rentang waktu, grafik, laporan CSV/JSON, template impor |
+| **Analitik** | WA baru vs follow-up, rentang waktu, grafik, ekspor laporan **Excel, teks WA, PDF, PNG**, CSV/JSON, template impor |
 | **Blast & Jadwal** | Kampanye ber-delay, batas harian/jam, jendela jam kirim, jeda otomatis saat error, pesan terjadwal sekali/berulang, pengingat yang bisa mengirim pesan |
-| **POS** | Katalog, kasir, nota (teks WA & cetak), stok, laporan penjualan |
+| **POS** | Produk fisik/digital/jasa (varian, harga grosir, kode lisensi, stok), kasir, nota (teks WA rapi = preview), laporan penjualan |
 | **Ekstrak Grup** | Anggota grup → CSV/vCard/JSON, tambah ke CRM (build `full`) |
 | **Preset Industri** | Paket template + aturan + pipeline untuk toko online, restoran/hotel, klinik, pendidikan, jasa keuangan, pemerintahan, CS umum |
 | **Privacy Blur** | Samarkan daftar chat, pesan, nama, foto; Ctrl+Shift+B; blur otomatis saat idle/tidak aktif |
@@ -141,7 +141,7 @@ POS (katalog, invoice), blast terjadwal dengan jeda aman, ekstrak anggota grup (
 ## Instalasi
 
 ### Plug & play (tanpa build)
-Folder root repositori ini **sudah berisi build `store` yang siap dimuat** (`manifest.json`, `assets/`, `popup/`, dll.).
+Folder root repositori ini **sudah berisi build `full` (semua fitur) yang siap dimuat** (`manifest.json`, `assets/`, `popup/`, dll.).
 
 1. Unduh/clone repositori ini.
 2. Buka `chrome://extensions` dan aktifkan **Developer mode**.

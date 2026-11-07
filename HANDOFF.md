@@ -3,7 +3,7 @@
 Dokumen serah terima untuk melanjutkan pekerjaan di sesi/akun Claude lain. Terakhir diperbarui: 7 Nov 2026.
 Baca juga `CLAUDE.md` (konvensi proyek) dan `README.md` (gambaran fitur untuk pengguna).
 
-> **STATUS CHECKPOINT TERAKHIR (WIP):** typecheck bersih, 363 tes lolos, `build:full` ke root berhasil saat commit ini. Empat subagent (auto-reply scope + kirim senyap + diagnostik, Hub Akun QR/CRUD, POS produk fisik/digital, ekspor laporan Analitik) masih mengedit saat commit, jadi sebagian file mereka belum lengkap/terpasang. Cek bagian 6, lalu `npm run typecheck && npm test && npm run build:full`, commit, push.
+> **STATUS CHECKPOINT TERAKHIR:** semua pekerjaan di bagian 6 SUDAH masuk dan terpasang. Typecheck bersih, 390 tes lolos, `build:full` (root) dan `build:store` (dist/store) lolos, zip di `release/` (tidak di-commit; buat dengan `npm run package`). **Belum ada yang diuji di WhatsApp Web asli.** Langkah berikutnya: muat folder root di Chrome, jalankan *Diagnostik pengirim* (halaman Auto-reply) dan kirim hasil 'Salin hasil' untuk memperbaiki nama modul internal WA yang masih tebakan.
 
 ## 1. Ringkasan proyek
 Ekstensi Chrome (Manifest V3) untuk `https://web.whatsapp.com/`, fokus marketing WhatsApp. Pemilik: Irvando Demas Arifiandani (`irvandoda`, irvando.d.a@gmail.com, irvandoda.web.id). Repo: https://github.com/irvandoo/WhatsApp-Web-Toolkit-by-Irvandoda (publik, branch `main`).
@@ -48,8 +48,7 @@ Alur pesan: halaman ekstensi/iframe → `chrome.runtime.sendMessage` → router 
 Terpasang & lulus typecheck/tes unit, **belum ada yang diuji di WhatsApp Web sungguhan**:
 Sync Center + arsip lokal, memori, multi-akun (slot) + switcher, dock navbar + overlay (resizable), CRM (+lead intelligence), Template (+`/kode`, rotasi varian), Analitik (WA baru vs follow-up, belum dibalas, lead panas), Auto-reply, Blast & Jadwal, POS, Ekstrak Grup (full), Preset Industri, Privacy Blur, ScrollTable di semua tabel.
 
-## 6. PEKERJAAN YANG SEDANG BERJALAN saat sesi ini berakhir (subagent, hasil belum tentu masuk)
-Periksa `git status`/`git log` dan tes dulu; kerjakan ulang bagian yang belum ada.
+## 6. Pekerjaan yang diselesaikan di sesi terakhir (semua sudah terpasang)
 1. **Ekspor laporan Analitik** (Excel .xlsx tanpa pustaka, teks WA, PDF, PNG): file di `app/analytics/**` dan `app/shared/report/*` (xlsx.ts, zip.ts, wa-text.ts, canvas-report.ts, pdf.ts + tes).
 2. **Penerima Blast dari Label / Grup / Manual**: format otomatis nomor (`+62 857-4747-6308` → `6285747476308`), hapus duplikat otomatis; file `app/blast/RecipientPicker.tsx`, `app/shared/recipients-logic.ts`, adapter `labels:list`/`labels:chats`, relay `app/background/recipients-relay.ts` + `app/content/recipients-bridge.ts`.
    **Wiring yang mungkin belum dipasang:** di `background/index.ts` tambah `{ is: isRcpMsg, handle: handleRcp }` ke `MODULES` dan `rcp` ke regex skip; di `content/index.ts` panggil `mountRecipientsBridge()`.

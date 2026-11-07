@@ -3,12 +3,15 @@ import { liveQuery } from 'dexie';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { IS_FULL } from '../shared/credit';
 import { db } from '../shared/db';
-import { validateRule } from '../shared/autoreply-logic';
+import { groupCfg, isGroupKey, normalizeRule, scopeOf, validateRule } from '../shared/autoreply-logic';
+import { GroupPicker } from './GroupPicker';
+import { Diagnostics } from './Diagnostics';
+import type { GroupInfo, GroupsListResult } from '../shared/messages';
 import {
-  AR_GLOBAL_KEY, DEFAULT_AR_GLOBAL, newRule, type ArGlobal, type ArLogEntry, type ArMsg, type ArRule,
+  AR_GLOBAL_KEY, DEFAULT_AR_GLOBAL, newRule, type ArGlobal, type ArLogEntry, type ArMsg, type ArRule, type ArScope,
 } from '../shared/autoreply-types';
 import { VariantEditor } from '../shared/ui/VariantEditor';
-import { KNOWN_VARS, render } from '../shared/template-engine';
+import { GROUP_VARS, KNOWN_VARS, render } from '../shared/template-engine';
 
 const send = <T,>(m: ArMsg): Promise<T> => chrome.runtime.sendMessage(m) as Promise<T>;
 
@@ -47,15 +50,16 @@ const TRIGGERS: Record<ArRule['trigger'], string> = {
   keyword: 'Kata kunci', 'first-message': 'Pesan pertama (lead baru)', 'away-hours': 'Di luar jam kerja', any: 'Semua pesan',
 };
 const MATCH: Record<ArRule['matchMode'], string> = { contains: 'Mengandung kata', exact: 'Sama persis', 'regex-safe': 'Kata utuh (batas kata)' };
-const SAMPLE_VARS = { nama: 'Budi', telepon: '628123456789', tahap: 'Lead baru', tanggal: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }), akun: 'Toko Saya' };
+const SCOPE_LABEL: Record<ArScope, string> = { personal: 'Pribadi', group: 'Grup', all: 'Pribadi + Grup' };
+const SAMPLE_VARS = { pengirim: 'Budi', grup: 'Grup Pelanggan', nama: 'Budi', telepon: '628123456789', tahap: 'Lead baru', tanggal: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }), akun: 'Toko Saya' };
 const fmt = (ts: number) => new Date(ts).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-type Tab = 'aturan' | 'log' | 'keamanan';
+type Tab = 'aturan' | 'log' | 'keamanan' | 'diagnostik';
 
 export function App() {
-  const [tab, setTab] = useState<Tab>('aturan');
+  const [tab, setTab] = useState<Tab>(() => (location.hash === '#diag' ? 'diagnostik' : 'aturan'));
   const [g, setG] = useGlobal();
-  const rules = useLive(async () => (await db.arRules.toArray()).sort((a, b) => a.order - b.order), [] as ArRule[]);
+  const rules = useLive(async () => (await db.arRules.toArray()).map(normalizeRule).sort((a, b) => a.order - b.order), [] as ArRule[]);
   const [editing, setEditing] = useState<ArRule | null>(null);
   const [seeded, setSeeded] = useState(false);
 
@@ -90,9 +94,9 @@ export function App() {
       </div>
 
       <nav role="tablist" aria-label="Bagian">
-        {(['aturan', 'log', 'keamanan'] as Tab[]).map((t) => (
+        {(['aturan', 'log', 'keamanan', 'diagnostik'] as Tab[]).map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
-            {t === 'aturan' ? 'Aturan' : t === 'log' ? 'Log' : 'Keamanan'}
+            {t === 'aturan' ? 'Aturan' : t === 'log' ? 'Log' : t === 'keamanan' ? 'Keamanan' : 'Diagnostik pengirim'}
           </button>
         ))}
       </nav>
@@ -101,6 +105,7 @@ export function App() {
       {tab === 'aturan' && <Rules rules={rules} ready={seeded} onEdit={setEditing} onNew={() => setEditing(newRule(rules.length))} />}
       {tab === 'log' && <Log />}
       {tab === 'keamanan' && <Safety />}
+      {tab === 'diagnostik' && <Diagnostics />}
       </div>
       {editing && <Editor key={editing.id} initial={editing} onClose={() => setEditing(null)} />}
     </div>
@@ -111,6 +116,8 @@ export function App() {
 function Rules({ rules, ready, onEdit, onNew }: { rules: ArRule[]; ready: boolean; onEdit: (r: ArRule) => void; onNew: () => void }) {
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
+  const [sf, setSf] = useState<'all' | ArScope>('all');
+  const shown = rules.filter((r) => sf === 'all' || (sf === 'personal' ? scopeOf(r) !== 'group' : scopeOf(r) !== 'personal'));
 
   const reorder = (ids: string[]) => void send({ kind: 'ar:rule:reorder', ids });
   const move = (id: string, dir: -1 | 1) => {
@@ -133,10 +140,15 @@ function Rules({ rules, ready, onEdit, onNew }: { rules: ArRule[]; ready: boolea
     <div>
       <div className="bar">
         <button className="pri" onClick={onNew}>+ Aturan baru</button>
+        <div className="seg" role="group" aria-label="Filter cakupan">
+          {([['all', 'Semua'], ['personal', 'Pribadi'], ['group', 'Grup']] as const).map(([k, l]) => (
+            <button key={k} className={sf === k ? 'on' : ''} aria-pressed={sf === k} onClick={() => setSf(k)}>{l}</button>
+          ))}
+        </div>
         <span className="mut">Urutan menentukan prioritas: aturan pertama yang cocok akan dipakai.</span>
       </div>
       {ready && !rules.length && <p className="mut">Belum ada aturan.</p>}
-      {rules.map((r, i) => (
+      {shown.map((r) => { const i = rules.indexOf(r); return (
         <div key={r.id} className={'rule' + (dragId === r.id ? ' drag' : '') + (overId === r.id ? ' over' : '')}
           draggable onDragStart={() => setDragId(r.id)} onDragEnd={() => { setDragId(null); setOverId(null); }}
           onDragOver={(e) => { e.preventDefault(); setOverId(r.id); }} onDrop={() => { drop(r.id); setOverId(null); }}>
@@ -146,6 +158,7 @@ function Rules({ rules, ready, onEdit, onNew }: { rules: ArRule[]; ready: boolea
           </label>
           <div className="main">
             <b>{i + 1}. {r.name}</b>
+            <span className={'pill scope'}>{SCOPE_LABEL[scopeOf(r)]}</span>
             <span className="pill">{TRIGGERS[r.trigger]}</span>
             <span className={'pill ' + (r.mode === 'auto' ? 'warn' : 'ok')}>{r.mode === 'auto' ? 'Auto' : 'Draft'}</span>
             {r.trigger === 'keyword' && <span className="mut">{r.keywords.join(', ') || '(tanpa kata kunci)'}</span>}
@@ -157,7 +170,7 @@ function Rules({ rules, ready, onEdit, onNew }: { rules: ArRule[]; ready: boolea
             <button className="danger" onClick={() => del(r)}>Hapus</button>
           </div>
         </div>
-      ))}
+      ); })}
     </div>
   );
 }
@@ -172,6 +185,20 @@ function Editor({ initial, onClose }: { initial: ArRule; onClose: () => void }) 
   const sched = r.schedule ?? { days: [1, 2, 3, 4, 5], from: '09:00', to: '17:00' };
   const set = <K extends keyof ArRule>(k: K, v: ArRule[K]) => setR((p) => ({ ...p, [k]: v }));
   const num = (v: string, d: number) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
+  const scope = scopeOf(r);
+  const g = groupCfg(r);
+  const setGrp = (p: Partial<typeof g>) => setR((x) => ({ ...x, grp: { ...groupCfg(x), ...p } }));
+  const setScope = (sc: ArScope) => setR((x) => ({ ...x, scope: sc, trigger: sc !== 'personal' ? 'keyword' : x.trigger }));
+  const [loaded, setLoaded] = useState<GroupInfo[] | null>(null);
+  const [gMsg, setGMsg] = useState('');
+  const loadGroups = async () => {
+    setGMsg('Memuat daftar grup...');
+    try {
+      const res = (await chrome.runtime.sendMessage({ kind: 'grp:call', op: 'list' })) as GroupsListResult | undefined;
+      if (res && !res.unavailable) { setLoaded(res.groups); setGMsg(`${res.groups.length} grup dimuat.`); }
+      else setGMsg('Daftar grup tidak tersedia (buka tab WhatsApp Web). Anda tetap bisa mengetik nama grup manual.');
+    } catch { setGMsg('Daftar grup tidak tersedia. Ketik nama grup manual.'); }
+  };
 
   useEffect(() => {
     const on = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -204,9 +231,17 @@ function Editor({ initial, onClose }: { initial: ArRule; onClose: () => void }) 
         <label htmlFor="f-name">Nama aturan</label>
         <input id="f-name" style={{ width: '100%' }} value={r.name} onChange={(e) => set('name', e.target.value)} />
 
+        <label>Berlaku untuk</label>
+        <div className="seg" role="group" aria-label="Cakupan aturan">
+          {(['personal', 'group', 'all'] as ArScope[]).map((sc) => (
+            <button key={sc} className={scope === sc ? 'on' : ''} aria-pressed={scope === sc} onClick={() => setScope(sc)}>{sc === 'personal' ? 'Chat pribadi' : sc === 'group' ? 'Grup' : 'Semua'}</button>
+          ))}
+        </div>
+        {scope !== 'personal' && <p className="help">Aturan untuk grup wajib memakai pemicu Kata kunci dan punya pengaman ekstra (di bawah) yang tidak bisa dimatikan.</p>}
+
         <label htmlFor="f-trig">Pemicu</label>
         <select id="f-trig" value={r.trigger} onChange={(e) => set('trigger', e.target.value as ArRule['trigger'])}>
-          {Object.entries(TRIGGERS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          {Object.entries(TRIGGERS).filter(([k]) => scope === 'personal' || k === 'keyword').map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
 
         {r.trigger === 'keyword' && (
@@ -242,7 +277,7 @@ function Editor({ initial, onClose }: { initial: ArRule; onClose: () => void }) 
         <label htmlFor="f-reply">Isi balasan</label>
         <textarea id="f-reply" ref={taRef} rows={5} value={r.reply} onChange={(e) => set('reply', e.target.value)} />
         <div className="row chips" style={{ marginTop: 4 }} aria-label="Sisipkan variabel">
-          {KNOWN_VARS.map((v) => <button key={v} onClick={() => insertVar(v)}>{`{${v}}`}</button>)}
+          {[...KNOWN_VARS, ...GROUP_VARS.filter((v) => v === 'pengirim' || scope === 'group')].map((v) => <button key={v} onClick={() => insertVar(v)}>{`{${v}}`}</button>)}
         </div>
         <VariantEditor body={r.reply} variants={r.replyVariants} rotation={r.rotation} vars={SAMPLE_VARS} maxLen={1000}
           onChange={(v) => setR((p) => ({ ...p, replyVariants: v.variants, rotation: v.rotation }))} />
@@ -267,6 +302,27 @@ function Editor({ initial, onClose }: { initial: ArRule; onClose: () => void }) 
           <div><label htmlFor="f-mx">Maks kirim/jam</label>
             <input id="f-mx" type="number" min={1} max={60} style={{ width: 80 }} value={r.maxPerHour} onChange={(e) => set('maxPerHour', num(e.target.value, 20))} /></div>
         </div>
+        {scope !== 'personal' && (
+          <div className="fixed" aria-label="Pengaman grup">
+            <b>Pengaman grup (tidak bisa dimatikan)</b>
+            <p className="help">{IS_FULL
+              ? 'Pilih grup dari daftar yang dimuat dari WhatsApp Web, atau ketik nama grup.'
+              : 'Versi Store: daftar grup tidak dimuat otomatis; ketik nama grup persis (sama dengan nama di WhatsApp).'}</p>
+            {IS_FULL && <div className="row"><button onClick={() => void loadGroups()}>Muat daftar grup</button><span className="mut">{gMsg}</span></div>}
+            <GroupPicker label="Grup yang boleh dibalas (wajib pilih minimal satu)" value={g.allow} loaded={loaded} onChange={(v) => setGrp({ allow: v })} />
+            <GroupPicker label="Grup yang selalu diabaikan (daftar tolak)" value={g.deny} loaded={loaded} onChange={(v) => setGrp({ deny: v })} />
+            <label className="row" style={{ marginTop: 8, fontWeight: 400 }}>
+              <input type="checkbox" checked={g.requireMention} onChange={(e) => setGrp({ requireMention: e.target.checked })} /> Hanya jika saya di-mention atau pesan membalas saya
+            </label>
+            <div className="row" style={{ marginTop: 6 }}>
+              <div><label htmlFor="f-gcd">Cooldown grup (menit, min 5)</label>
+                <input id="f-gcd" type="number" min={5} style={{ width: 90 }} value={r.grp?.groupCooldownMin ?? g.groupCooldownMin} onChange={(e) => setGrp({ groupCooldownMin: num(e.target.value, 10) })} /></div>
+              <div><label htmlFor="f-gmx">Maks kirim grup/jam</label>
+                <input id="f-gmx" type="number" min={1} max={60} style={{ width: 90 }} value={r.grp?.maxPerHour ?? g.maxPerHour} onChange={(e) => setGrp({ maxPerHour: num(e.target.value, 6) })} /></div>
+            </div>
+            <p className="help">Cooldown per (grup + pengirim) memakai angka &quot;Cooldown per chat&quot; (min 5 menit). Pesan dari akun Anda sendiri, bot, dan pesan sistem dilewati. Gunakan {'{pengirim}'} dan {'{grup}'} agar balasan menyapa pengirim.</p>
+          </div>
+        )}
         <label className="row" style={{ marginTop: 8, fontWeight: 400 }}>
           <input type="checkbox" checked={r.onlyNewLeads} onChange={(e) => set('onlyNewLeads', e.target.checked)} /> Hanya untuk lead baru (belum pernah kita balas)
         </label>
@@ -274,7 +330,7 @@ function Editor({ initial, onClose }: { initial: ArRule; onClose: () => void }) 
         <div className="fixed">
           <b>Pengaman tetap (tidak bisa diubah)</b>
           <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
-            <li>Tidak pernah membalas grup, broadcast, atau status.</li>
+            <li>Tidak pernah membalas broadcast, status, atau channel. Grup hanya dibalas bila aturan bercakupan Grup/Semua dengan pengaman di atas.</li>
             <li>Tidak pernah membalas kontak yang ditandai opt-out di CRM.</li>
             <li>Berhenti jika Anda sudah membalas sendiri setelah pesan masuk.</li>
           </ul>
@@ -295,7 +351,8 @@ function Log() {
   const log = useLive(() => db.arLog.orderBy('ts').reverse().limit(500).toArray(), [] as ArLogEntry[]);
   const [f, setF] = useState<'all' | 'draft' | 'sent' | 'skipped'>('all');
   const [q, setQ] = useState('');
-  const rows = log.filter((l) => (f === 'all' || l.action === f) && (!q.trim() || (l.chatName + l.ruleName + l.reason).toLowerCase().includes(q.trim().toLowerCase())));
+  const [lsc, setLsc] = useState<'all' | 'personal' | 'group'>('all');
+  const rows = log.filter((l) => (lsc === 'all' || (lsc === 'group') === isGroupKey(l.chatKey)) && (f === 'all' || l.action === f) && (!q.trim() || (l.chatName + l.ruleName + l.reason).toLowerCase().includes(q.trim().toLowerCase())));
   const label = { draft: 'Draft', sent: 'Terkirim', skipped: 'Dilewati' } as const;
   const cls = { draft: 'ok', sent: 'warn', skipped: 'bad' } as const;
   const clear = async () => { if (confirm('Hapus seluruh log auto-reply? Cooldown dan batas per jam akan ikut reset.')) await db.arLog.clear(); };
@@ -304,6 +361,9 @@ function Log() {
       <div className="bar">
         <select value={f} onChange={(e) => setF(e.target.value as typeof f)} aria-label="Filter aksi">
           <option value="all">Semua aksi</option><option value="draft">Draft</option><option value="sent">Terkirim</option><option value="skipped">Dilewati</option>
+        </select>
+        <select value={lsc} onChange={(e) => setLsc(e.target.value as typeof lsc)} aria-label="Filter cakupan">
+          <option value="all">Semua (pribadi + grup)</option><option value="personal">Pribadi</option><option value="group">Grup</option>
         </select>
         <input placeholder="Cari chat / aturan / alasan" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Cari" />
         <button className="danger" onClick={() => void clear()}>Kosongkan log</button>
@@ -336,7 +396,8 @@ function Safety() {
       <p>WhatsApp melarang pesan otomatis/massal yang tidak diminta dan dapat memblokir nomor yang dianggap spam. Fitur ini dirancang konservatif, tetapi tidak ada jaminan 100% aman.</p>
       <ul className="safe">
         <li><b>Hanya membalas orang yang menulis lebih dulu.</b> Tidak pernah memulai percakapan, tidak untuk blast/promosi tak diminta.</li>
-        <li><b>Tidak pernah membalas grup, broadcast, status.</b> Dikunci, tidak bisa diubah.</li>
+        <li><b>Tidak pernah membalas broadcast, status, channel.</b> Dikunci. <b>Grup</b> hanya dibalas oleh aturan bercakupan Grup/Semua: wajib pemicu kata kunci, wajib memilih grup, default hanya jika Anda di-mention/di-reply, cooldown per pengirim dan per grup (min 5 menit), batas kirim grup per jam terpisah (default 6). Tidak bisa dimatikan.</li>
+        <li><b>Risiko akun:</b> pengiriman otomatis (terutama ke grup) dapat membuat WhatsApp membatasi atau memblokir akun Anda. Gunakan dengan hemat. Jalur kirim senyap bergantung internal WhatsApp Web; cek di tab Diagnostik pengirim.</li>
         <li><b>Kontak opt-out di CRM dilewati.</b> Tandai pelanggan yang meminta berhenti.</li>
         <li><b>Berhenti jika Anda membalas sendiri.</b> Dicek lagi tepat sebelum kirim.</li>
         <li><b>Jeda acak</b> (default 4-12 detik) dan <b>variasi teks</b> (spintax) supaya tidak terlihat seperti robot.</li>
