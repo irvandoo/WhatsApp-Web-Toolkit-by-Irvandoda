@@ -69,6 +69,8 @@ Semua modul muncul sebagai tombol di **navbar WhatsApp Web** dan terbuka sebagai
 | **Preset Industri** | Paket template + aturan + pipeline untuk toko online, restoran/hotel, klinik, pendidikan, jasa keuangan, pemerintahan, CS umum |
 | **Privacy Blur** | Samarkan daftar chat, pesan, nama, foto; Ctrl+Shift+B; blur otomatis saat idle/tidak aktif |
 
+**Mode Otomatis (build full):** mesin pelacak, penghemat memori, status akun, dan kiriman terjadwal berjalan di latar belakang selama tab WhatsApp Web terbuka, dengan indikator di navbar (hijau = normal, biru = bekerja, kuning = perlu perhatian, abu-abu = dijeda), tombol Jeda/Lanjutkan, dan tombol darurat. Auto-reply tidak pernah aktif otomatis. Halaman **Mulai cepat** memandu pengguna awam. Ekstensi tidak bisa bekerja saat Chrome ditutup.
+
 **Aturan pengiriman:** build `store` **tidak mengirim otomatis** — Auto-reply, Blast, dan Jadwal menyiapkan *draf* di kolom chat + notifikasi, Anda yang menekan Enter. Hanya build `full` yang bisa mengirim otomatis, dengan semua pengaman (opt-in wajib, tanpa grup, hormati opt-out, delay & batas).
 
 ### 6. Optimasi memori tab
