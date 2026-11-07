@@ -7,7 +7,7 @@
 .rp-chip.ok{color:var(--ok);border-color:transparent;background:color-mix(in srgb,var(--ok) 14%,transparent)}
 .rp-chip.warn{color:var(--warn-bd);border-color:transparent;background:color-mix(in srgb,var(--warn-bd) 14%,transparent)}
 .rp-chip.bad{color:var(--bad);border-color:transparent;background:color-mix(in srgb,var(--bad) 12%,transparent)}
-.rp-list{max-height:220px;overflow:auto;border:1px solid var(--bd);border-radius:var(--rs);padding:4px 8px;margin:6px 0}
+.rp-list{max-height:max(220px,30vh);overflow:auto;border:1px solid var(--bd);border-radius:var(--rs);padding:4px 8px;margin:6px 0}
 .rp-list label{display:flex;gap:8px;align-items:center;padding:3px 0}
 .rp-list label span.sw{width:10px;height:10px;border-radius:50%;border:1px solid var(--bd);flex:none}
 .rp-src{display:inline-block;padding:0 7px;border-radius:99px;font-size:11px;font-weight:600;border:1px solid var(--bd);color:var(--mut)}

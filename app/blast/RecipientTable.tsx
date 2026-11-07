@@ -39,8 +39,9 @@ export function RecipientTable({ unique, invalid, duplicates, excluded, onFix, o
   const total = (showInv ? invalid.length : 0) + (showOk ? unique.length : 0);
   if (!unique.length && !invalid.length && !duplicates.length && !excluded.length) return <p className="mut">Belum ada penerima. Pilih sumber di atas.</p>;
 
-  const invRows = showInv ? invalid.map((inv, idx) => ({ inv, idx })).slice(0, n) : [];
-  const okRows = showOk ? unique.slice(0, Math.max(0, n - invRows.length)) : [];
+  // valid numbers first (they are what the user sends to), invalid ones after: otherwise 900+ invalid rows hide the good ones
+  const okRows = showOk ? unique.slice(0, n) : [];
+  const invRows = showInv ? invalid.map((inv, idx) => ({ inv, idx })).slice(0, Math.max(0, n - okRows.length)) : [];
   let row = 0;
   return (
     <div style={{ marginTop: 6 }}>
@@ -53,24 +54,24 @@ export function RecipientTable({ unique, invalid, duplicates, excluded, onFix, o
         <button onClick={() => { if (confirm('Kosongkan semua sumber penerima?')) onReset(); }}>Reset</button>
       </div>
 
-      <ScrollTable maxHeight="40vh" stickyFirst label="Daftar penerima gabungan">
+      <ScrollTable maxHeight="max(260px, calc(100vh - 430px))" stickyFirst label="Daftar penerima gabungan">
         <table>
           <thead><tr><th className="num">#</th><th>Sumber</th><th>Nomor</th><th>Nama</th><th>Status</th><th>Aksi</th></tr></thead>
           <tbody>
-            {invRows.map(({ inv, idx }) => (
-              <tr key={`i${idx}`}>
-                <td className="num">{++row}</td><td><SrcBadge s={inv.source} /></td>
-                <td className="err wrap">{inv.original || '-'}</td><td>-</td>
-                <td className="err wrap">Tidak valid: {inv.reason}</td>
-                <td className="rp-bad"><InvalidCell inv={inv} onFix={(v) => onFix(idx, v)} /></td>
-              </tr>
-            ))}
             {okRows.map((r) => (
               <tr key={r.phone}>
                 <td className="num">{++row}</td>
                 <td><SrcBadge s={r.source} />{r.sources.length > 1 && <span className="mut" title={r.sources.map((s) => SOURCE_LABEL[s]).join(', ')}> +{r.sources.length - 1}</span>}</td>
                 <td>{r.phone}</td><td>{r.name ?? '-'}</td><td><span className="okc">Valid</span></td>
                 <td><button className="bad" aria-label={`Hapus ${r.phone}`} onClick={() => onRemove(r.phone)}>Hapus</button></td>
+              </tr>
+            ))}
+            {invRows.map(({ inv, idx }) => (
+              <tr key={`i${idx}`}>
+                <td className="num">{++row}</td><td><SrcBadge s={inv.source} /></td>
+                <td className="err wrap">{inv.original || '-'}</td><td>-</td>
+                <td className="err wrap">Tidak valid: {inv.reason}</td>
+                <td className="rp-bad"><InvalidCell inv={inv} onFix={(v) => onFix(idx, v)} /></td>
               </tr>
             ))}
           </tbody>

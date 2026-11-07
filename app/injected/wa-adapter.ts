@@ -12,11 +12,32 @@ import type { InboxItem } from '../shared/autoreply-types';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
 
+/**
+ * Only ask WhatsApp's module loader once the app UI exists, and remember misses for a while.
+ * Calling `require()` for a module that is not defined yet makes WA's ErrorUtils print red
+ * "Requiring unknown module ..." / "unresolved dependencies" errors in the console (harmless, but noisy
+ * and it burns time), which happened while the QR/loading screen was still up.
+ */
+const appReady = (): boolean => !!document.querySelector('#pane-side, [data-testid="chatlist-header"], [data-testid="chat-list"]');
+const missUntil = new Map<string, number>();
 function req(name: string): Any {
   const w = window as Any;
-  try { if (typeof w.require === 'function') return w.require(name); } catch { /* module absent */ }
-  try { if (typeof w.mR?.findModule === 'function') return w.mR.findModule(name)?.[0]; } catch { /* ignore */ }
-  return undefined;
+  const now = Date.now();
+  if ((missUntil.get(name) ?? 0) > now || !appReady()) return undefined;
+  let out: Any;
+  try { if (typeof w.require === 'function') out = w.require(name); } catch { /* module absent */ }
+  if (out === undefined) { try { if (typeof w.mR?.findModule === 'function') out = w.mR.findModule(name)?.[0]; } catch { /* ignore */ } }
+  if (out === undefined) missUntil.set(name, now + 30_000);
+  return out;
+}
+
+/** Names of loaded WA modules matching a pattern (diagnostics only; empty when WA hides its module map). */
+function discoverModules(pattern: RegExp, max = 40): string[] {
+  try {
+    const dbg = (window as Any).require?.('__debug');
+    const keys = Object.keys(dbg?.modulesMap ?? {}).filter((k) => pattern.test(k));
+    return keys.slice(0, max);
+  } catch { return []; }
 }
 
 const store = {
@@ -172,6 +193,40 @@ function groupsList(): GroupsListResult {
   return { accountId: accountId(), groups };
 }
 
+/** "+62 857-4747-6308" / "0857 4747 6308" (what WA shows as the title of an unsaved contact) -> digits, else ''. */
+function phoneFromTitle(v: Any): string {
+  const t = typeof v === 'string' ? v.trim() : '';
+  if (!/^\+?[\d\s().-]{9,22}$/.test(t)) return '';
+  const d = digits(t);
+  return d.length >= 9 && d.length <= 15 ? d : '';
+}
+
+/**
+ * LID contacts keep their real phone number in a field whose NAME changes between WA releases
+ * (phoneNumber / pn / pnJid / userid ...). Instead of guessing one name, scan the model's own fields:
+ * only keys that look phone-related (never *lid*), values that are a c.us / s.whatsapp.net JID or a Wid with that server.
+ */
+function scanForPn(obj: Any, depth = 0): string {
+  if (!obj || typeof obj !== 'object' || depth > 2) return '';
+  let keys: string[] = [];
+  try { keys = Object.keys(obj).slice(0, 80); } catch { return ''; }
+  for (const k of keys) {
+    if (/lid/i.test(k) || !/(phone|^pn|pnjid|number|jid|msisdn|userid|user$)/i.test(k)) continue;
+    let v: Any;
+    try { v = obj[k]; } catch { continue; }
+    if (typeof v === 'string') {
+      if (/@(c\.us|s\.whatsapp\.net)$/.test(v)) { const d = digits(v.split('@')[0]); if (d.length >= 8) return d; }
+      else if (/phone|number|msisdn/i.test(k)) { const d = phoneFromTitle(v); if (d) return d; }
+    } else if (v && typeof v === 'object') {
+      const server = String(v.server ?? v.$2 ?? '');
+      const raw = wid(v);
+      if (server === 'c.us' || /@(c\.us|s\.whatsapp\.net)$/.test(raw)) { const d = digits(wsUser(v) || raw.split('@')[0]); if (d.length >= 8) return d; }
+      else if (depth < 2) { const d = scanForPn(v, depth + 1); if (d) return d; }
+    }
+  }
+  return '';
+}
+
 async function phoneOf(p: Any): Promise<string | null> {
   const id = p?.id;
   const server = String(id?.server ?? '');
@@ -185,8 +240,21 @@ async function phoneOf(p: Any): Promise<string | null> {
     const lidMod = req('WAWebApiContact');
     const viaApi = lidMod?.getPhoneNumber?.(id);
     cands.push(viaApi);
+    // other places WA keeps the LID <-> phone mapping (names unverified; each call is guarded and cached on miss)
+    for (const modName of ['WAWebLidPhoneUtils', 'WAWebLidMigrationUtils', 'WAWebContactPhoneUtils']) {
+      const mod = req(modName);
+      for (const fn of ['getPhoneNumber', 'getPnForLid', 'lidToPn', 'toPn', 'getPn', 'getPhoneNumberFromLid']) {
+        try { const v = mod?.[fn]?.(id); if (v) cands.push(v); } catch { /* wrong signature */ }
+      }
+    }
   } catch { /* ignore */ }
   for (const x of cands) { const d = digits(typeof x === 'string' ? x.split('@')[0] : wsUser(x)); if (d.length >= 6) return d; }
+  // generic fallbacks: scan model fields, then use the display title when it is itself a phone number
+  try {
+    const cm = store.collections?.Contact?.get?.(id);
+    for (const o of [p?.contact, cm, p?.contact?.attributes, cm?.attributes]) { const d = scanForPn(o); if (d) return d; }
+    for (const t of [p?.title, p?.contact?.formattedName, p?.contact?.formattedPhone, cm?.formattedName, cm?.formattedPhone, cm?.displayNameLID]) { const d = phoneFromTitle(t); if (d) return d; }
+  } catch { /* ignore */ }
   return null;
 }
 
@@ -270,7 +338,7 @@ async function labelChats(labelId: string): Promise<LabelChatsResult> {
       const idObj = chat?.id ?? id;
       let phone: string | null = null;
       if (/@(c\.us|s\.whatsapp\.net)$/.test(id)) phone = digits(id.split('@')[0]) || null;
-      else if (chat) phone = await phoneOf({ id: chat.id, contact: chat.contact });
+      else if (chat) phone = await phoneOf({ id: chat.id, contact: chat.contact, title: chat.formattedTitle ?? chat.name });
       const ct = chat?.contact ?? store.collections?.Contact?.get?.(idObj);
       chats.push({
         chatId: id, phone,
@@ -498,6 +566,7 @@ function probe(): ProbeResult {
   items.push(fnItem('Label', 'WAWebCollections', c, 'Label'));
   add('Cek nomor (check:registered)', 'WAWebQueryExist', ['queryExists', 'queryExist']);
   add('Akun', 'WAWebUserPrefsMeUser', ['getMaybeMePnUser', 'getMaybeMeLidUser', 'getMaybeMeUser']);
+  for (const n of discoverModules(/lid|phone|pn[A-Z]|PhoneNumber/i)) items.push({ group: 'Penemuan modul (LID/nomor)', name: n, found: true, type: 'module' });
   return { items, accountId: accountId(), store: !!c?.Chat, hidden: document.hidden };
 }
 

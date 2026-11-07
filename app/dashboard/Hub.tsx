@@ -435,7 +435,7 @@ export function AccountsHub() {
       </div>
     )}
     {shown.length > 0 && !cards && (
-      <ScrollTable stickyFirst label="Daftar akun" maxHeight="46vh">
+      <ScrollTable stickyFirst label="Daftar akun" maxHeight="max(260px, 62vh)">
         <table>
           <thead><tr>
             <th><input type="checkbox" aria-label="Pilih semua" checked={allSel} onChange={() => setSel(allSel ? new Set() : new Set(shown.map((x) => x.id)))} /></th>

@@ -32,7 +32,7 @@ input:hover,select:hover{border-color:var(--bd-strong)}
 :focus-visible{outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent);outline-offset:2px}
 input:focus-visible,select:focus-visible{outline-offset:0;border-color:var(--accent)}
 .muted{color:var(--muted)}
-.page{padding:16px clamp(12px,2vw,24px) 0;max-width:1280px;margin:0 auto;height:100%;display:flex;flex-direction:column;min-height:0}
+.page{padding:16px clamp(12px,2vw,24px) 0;max-width:none;margin:0;height:100%;display:flex;flex-direction:column;min-height:0}
 .page>.head,.page>.bar,.page>.tabs{flex:none}
 .pane{flex:1;min-height:0;overflow:auto;overflow-x:hidden;padding:4px 2px 24px;scrollbar-gutter:stable}
 .pane.fill{overflow:hidden;display:flex;flex-direction:column;padding-bottom:12px}

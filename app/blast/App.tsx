@@ -119,7 +119,7 @@ function RecipientPreview({ list }: { list: Recipient[] }) {
   if (!list.length) return null;
   return (
     <div style={{ marginTop: 6 }}>
-      <ScrollTable maxHeight="40vh" stickyFirst label="Pratinjau penerima">
+      <ScrollTable maxHeight="max(240px, 56vh)" stickyFirst label="Pratinjau penerima">
         <table>
           <thead><tr><th className="num">#</th><th>Telepon</th><th>Nama</th>{cols.map((c) => <th key={c}>{c}</th>)}</tr></thead>
           <tbody>{list.slice(0, n).map((r, i) => (
@@ -328,7 +328,7 @@ function Running({ campaigns }: { campaigns: Campaign[] }) {
             {c.pausedReason && c.status === 'paused' && <p className="err" role="status">{c.pausedReason}</p>}
             {open === c.id && (
               <div style={{ marginTop: 8 }}>
-                <ScrollTable maxHeight="50vh" stickyFirst label="Status per penerima">
+                <ScrollTable maxHeight="max(260px, 62vh)" stickyFirst label="Status per penerima">
                 <table>
                   <thead><tr><th>Nomor</th><th>Nama</th><th>Status</th><th>Jadwal kirim</th><th>Keterangan</th><th /></tr></thead>
                   <tbody>
@@ -425,7 +425,7 @@ function Schedules() {
       <div className="card">
         <h2>Daftar jadwal</h2>
         {!sorted.length ? <p className="mut">Belum ada jadwal.</p> : (
-          <ScrollTable maxHeight="50vh" label="Daftar jadwal"><table>
+          <ScrollTable maxHeight="max(260px, 62vh)" label="Daftar jadwal"><table>
             <thead><tr><th>Aktif</th><th>Nama</th><th>Tujuan</th><th>Pengulangan</th><th>Berikutnya</th><th /></tr></thead>
             <tbody>{sorted.map((s) => (
               <tr key={s.id}>

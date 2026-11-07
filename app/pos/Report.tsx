@@ -49,13 +49,13 @@ export function Report({ orders }: { orders: Order[] }) {
       <div className="cols">
         <div>
           <h3>Produk teratas</h3>
-          <ScrollTable maxHeight="40vh" label="Produk teratas"><table><thead><tr><th>Produk</th><th className="num">Qty</th><th className="num">Omzet</th></tr></thead>
+          <ScrollTable maxHeight="max(240px, 56vh)" label="Produk teratas"><table><thead><tr><th>Produk</th><th className="num">Qty</th><th className="num">Omzet</th></tr></thead>
             <tbody>{r.topProducts.map((p) => <tr key={p.key}><td className="wrap">{p.name}</td><td className="num">{p.qty}</td><td className="num">{fmtIdr(p.revenue)}</td></tr>)}
               {!r.topProducts.length && <tr><td colSpan={3} className="mut">Tidak ada data.</td></tr>}</tbody></table></ScrollTable>
         </div>
         <div>
           <h3>Pelanggan teratas</h3>
-          <ScrollTable maxHeight="40vh" label="Pelanggan teratas"><table><thead><tr><th>Pelanggan</th><th className="num">Order</th><th className="num">Total</th></tr></thead>
+          <ScrollTable maxHeight="max(240px, 56vh)" label="Pelanggan teratas"><table><thead><tr><th>Pelanggan</th><th className="num">Order</th><th className="num">Total</th></tr></thead>
             <tbody>{r.topCustomers.map((c) => <tr key={c.key}><td className="wrap">{c.name}</td><td className="num">{c.orders}</td><td className="num">{fmtIdr(c.total)}</td></tr>)}
               {!r.topCustomers.length && <tr><td colSpan={3} className="mut">Tidak ada data.</td></tr>}</tbody></table></ScrollTable>
         </div>

@@ -150,7 +150,7 @@ export function Cashier({ products, contacts, settings, editing, onSaved, onCanc
         </div>
         {contactKey && <small className="mut">Terhubung ke kontak CRM</small>}
 
-        <ScrollTable maxHeight="45vh" stickyFirst label="Keranjang">
+        <ScrollTable maxHeight="max(260px, 62vh)" stickyFirst label="Keranjang">
         <table>
           <thead><tr><th>Item</th><th className="num">Qty</th><th className="num">Harga</th><th className="num">Diskon</th><th className="num">Jumlah</th><th></th></tr></thead>
           <tbody>

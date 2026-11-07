@@ -120,7 +120,7 @@ export function StatsView({ stats, summary }: { stats: StatsT; summary: Summary 
       {stats.compare.length > 0 && (
         <section className="card">
           <SectionTitle icon="compare">Dibanding periode sebelumnya</SectionTitle>
-          <ScrollTable maxHeight="40vh" label="Perbandingan periode"><table>
+          <ScrollTable maxHeight="max(240px, 56vh)" label="Perbandingan periode"><table>
             <caption className="sr">Perbandingan dengan periode sebelumnya</caption>
             <thead><tr><th scope="col">Metrik</th><th scope="col" className="num">Sekarang vs lalu</th><th scope="col" className="num">Perubahan</th></tr></thead>
             <tbody>{stats.compare.map((c) => {
@@ -137,7 +137,7 @@ export function StatsView({ stats, summary }: { stats: StatsT; summary: Summary 
       {stats.accounts.length > 1 && (
         <section className="card">
           <SectionTitle icon="users">Perbandingan akun</SectionTitle>
-          <ScrollTable maxHeight="40vh" stickyFirst label="Perbandingan akun"><table>
+          <ScrollTable maxHeight="max(240px, 56vh)" stickyFirst label="Perbandingan akun"><table>
             <caption className="sr">Perbandingan per akun</caption>
             <thead><tr><th scope="col">Akun</th><th scope="col" className="num">Pesan</th><th scope="col" className="num">WA Baru</th><th scope="col" className="num">Median balasan</th><th scope="col" className="num">Belum dibalas</th></tr></thead>
             <tbody>{stats.accounts.map((a) => (

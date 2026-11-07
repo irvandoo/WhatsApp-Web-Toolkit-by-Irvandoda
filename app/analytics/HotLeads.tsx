@@ -14,7 +14,7 @@ function Table({ rows, accountNames, toast, empty }: { rows: LeadIntel[]; accoun
     try { await chrome.runtime.sendMessage(msg); toast('Pengingat dibuat (1 jam lagi).'); } catch { toast('Gagal membuat pengingat.'); }
   }
   return (
-    <ScrollTable stickyFirst maxHeight="48vh" label="Tabel lead">
+    <ScrollTable stickyFirst maxHeight="max(260px, 62vh)" label="Tabel lead">
       <table>
         <thead><tr>
           <th scope="col">Nama</th><th scope="col">Nomor</th><th scope="col">Akun</th><th scope="col">Temperature</th><th scope="col" className="num">Engagement</th>
