@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import { usePersistentState } from '../shared/ui/persist';
+import { oneOf } from '../shared/ui/viewState';
 import { resolveRange } from '../shared/analytics-logic';
 import type { RangeKey } from '../shared/analytics-types';
 import { buildReport, fmtIdr, reportToCsv } from '../shared/pos-logic';
@@ -12,10 +14,12 @@ const parseDay = (s: string, endOfDay: boolean) => {
   return y ? new Date(y, m - 1, d + (endOfDay ? 1 : 0)).getTime() : NaN;
 };
 
+const isRange = oneOf<RangeKey>(TABS.map((t) => t[0]));
+
 export function Report({ orders }: { orders: Order[] }) {
-  const [key, setKey] = useState<RangeKey>('month');
-  const [from, setFrom] = useState(toLocalInput(Date.now() - 6 * 86400e3));
-  const [to, setTo] = useState(toLocalInput(Date.now()));
+  const [key, setKey] = usePersistentState<RangeKey>('pos.report.range', 'month', isRange);
+  const [from, setFrom] = usePersistentState('pos.report.from', toLocalInput(Date.now() - 6 * 86400e3));
+  const [to, setTo] = usePersistentState('pos.report.to', toLocalInput(Date.now()));
   const range = useMemo(() => {
     if (key !== 'custom') return resolveRange(key, Date.now());
     const f = parseDay(from, false), t = parseDay(to, true);

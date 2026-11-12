@@ -209,6 +209,7 @@ function Wizard({ onStarted, initial }: { onStarted: () => void; initial?: Wizar
   const restoredRef = useRef(!!initial?.recipients.length);
   const [restored, setRestored] = useState(restoredRef.current);
   const [pickKey, setPickKey] = useState(0);
+  const [allowDup, setAllowDup] = useState(initial?.allowDuplicates ?? false);
   const [body, setBody] = useState(initial?.body ?? '');
   const [safety, setSafety] = useState<SafetySettings>(initial?.safety ?? DEFAULT_SAFETY);
   const [optIn, setOptIn] = useState(initial?.optIn ?? false);
@@ -224,7 +225,7 @@ function Wizard({ onStarted, initial }: { onStarted: () => void; initial?: Wizar
   const earliest = useLive(async () => (await db.sendLog.orderBy('ts').filter((e) => e.status === 'sent' && e.mode === 'auto').first())?.ts ?? null, null as number | null);
 
   // Auto-save everything typed so far (survives a refresh, closing the overlay, or switching tabs).
-  useEffect(() => { saveDraftPart({ wizard: { step, name, body, safety, optIn, later, startLocal, recipients: picked.recipients, source: picked.source } }); }, [step, name, body, safety, optIn, later, startLocal, picked]);
+  useEffect(() => { saveDraftPart({ wizard: { step, name, body, safety, optIn, later, startLocal, recipients: picked.recipients, source: picked.source, allowDuplicates: allowDup } }); }, [step, name, body, safety, optIn, later, startLocal, picked, allowDup]);
   useEffect(() => () => { void flushDraftNow(); }, []);
   const onPick = useCallback((r: PickerResult) => {
     if (restoredRef.current && r.recipients.length === 0) return; // the picker starts empty: keep the saved recipients until the user chooses new ones
@@ -244,10 +245,10 @@ function Wizard({ onStarted, initial }: { onStarted: () => void; initial?: Wizar
     let n = 0;
     return planCampaign({
       id: 'preview', name: name || 'Pratinjau', template: body, recipients, safety: safe, optInConfirmed: optIn, source, startAt,
-      now: Date.now(), history, optOutPhones: optOut, mode: IS_FULL ? 'auto' : 'draft', genId: () => `p${++n}`,
+      now: Date.now(), history, optOutPhones: optOut, mode: IS_FULL ? 'auto' : 'draft', genId: () => `p${++n}`, allowDuplicates: allowDup,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, body, recipients, safe, optIn, source, startAt, recent, earliest, optOut]);
+  }, [name, body, recipients, safe, optIn, source, startAt, recent, earliest, optOut, allowDup]);
 
   const sample: Recipient = recipients[0] ?? { phone: '6281234567890', name: 'Budi' };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -262,7 +263,7 @@ function Wizard({ onStarted, initial }: { onStarted: () => void; initial?: Wizar
     try {
       const r = await send<{ ok: boolean; errors?: string[] }>({
         kind: 'ob:campaign:create',
-        input: { name: name.trim(), template: body, recipients, safety: safe, startAt, optInConfirmed: optIn, source },
+        input: { name: name.trim(), template: body, recipients, safety: safe, startAt, optInConfirmed: optIn, source, allowDuplicates: allowDup },
       });
       if (!r?.ok) { setErrs(r?.errors ?? ['Gagal membuat kampanye.']); return; }
       setStep(1); setName(''); setBody(''); setOptIn(false); setPickKey((k) => k + 1);
@@ -281,10 +282,10 @@ function Wizard({ onStarted, initial }: { onStarted: () => void; initial?: Wizar
       <div hidden={step !== 1}>
         <div className="card">
           <h2>Penerima</h2>
-          <p className="mut">Pilih sumber nomor: Manual, Label, Grup, CRM, atau CSV. Nomor otomatis diformat (misal <code>+62 857-4747-6308</code> menjadi <code>6285747476308</code>) dan duplikat dihapus otomatis.</p>
+          <p className="mut">Pilih sumber nomor: Manual, Label, Grup, CRM, atau CSV. Nomor otomatis diformat (misal <code>+62 857-4747-6308</code> menjadi <code>6285747476308</code>). Nomor duplikat dihapus otomatis bila opsi <b>Hapus nomor duplikat otomatis</b> aktif.</p>
           {restored && <div className="banner" role="status">Draf dipulihkan: <b>{picked.recipients.length}</b> penerima tersimpan dari sesi sebelumnya. Pilih sumber di bawah untuk menggantinya. <button onClick={dropRestored}>Buang penerima tersimpan</button></div>}
-          <RecipientPicker key={pickKey} onChange={onPick} />
-          <p><b>Total penerima unik: {recipients.length}</b></p>
+          <RecipientPicker key={pickKey} onChange={onPick} dedupe={!allowDup} onDedupeChange={(v) => setAllowDup(!v)} />
+          <p><b>{allowDup ? 'Total pesan (nomor boleh berulang)' : 'Total penerima unik'}: {recipients.length}</b></p>
         </div>
       </div>
 

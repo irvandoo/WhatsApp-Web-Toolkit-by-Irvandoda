@@ -3,6 +3,7 @@ import { liveQuery } from 'dexie';
 import { db } from '../shared/db';
 import { ScrollTable } from '../shared/ui/ScrollTable';
 import { useGroups, useNow } from '../shared/ui/hooks';
+import { usePersistentState } from '../shared/ui/persist';
 import { relTime } from '../shared/ui/i18n';
 import type { AccountGroup } from '../shared/messages';
 import { DEFAULT_SID, SLOT_COLORS, type Slot, type SlotMsg, type SlotPatch } from '../shared/slots';
@@ -116,15 +117,17 @@ function QrGuide() {
 
 // ---------- Add dialog ----------
 function AddDialog({ groups, onClose, toast }: { groups: AccountGroup[]; onClose: () => void; toast: (t: string, bad?: boolean) => void }) {
-  const [label, setLabel] = useState(''), [color, setColor] = useState(SLOT_COLORS[0]);
-  const [groupId, setGroupId] = useState<string | null>(null), [note, setNote] = useState('');
-  const [where, setWhere] = useState<'here' | 'tab'>(IN_OVERLAY ? 'here' : 'tab');
+  const [label, setLabel] = usePersistentState('hub.draft.add.label', ''), [color, setColor] = usePersistentState('hub.draft.add.color', SLOT_COLORS[0], (v): v is (typeof SLOT_COLORS)[number] => SLOT_COLORS.some((c) => c === v));
+  const [groupId, setGroupId, rGroup] = usePersistentState<string | null>('hub.draft.add.group', null, (v): v is string | null => v === null || typeof v === 'string'), [note, setNote] = usePersistentState('hub.draft.add.note', '');
+  const [where, setWhere] = usePersistentState<'here' | 'tab'>('hub.draft.add.where', IN_OVERLAY ? 'here' : 'tab', (v): v is 'here' | 'tab' => v === 'here' || v === 'tab');
+  useEffect(() => { if (rGroup && groupId && !groups.some((g) => g.id === groupId)) setGroupId(null); }, [rGroup, groupId, groups, setGroupId]);
   const [busy, setBusy] = useState(false);
   const go = async () => {
     if (!label.trim()) { toast('Isi nama akun dulu.', true); return; }
     setBusy(true);
     try {
       const s = await slotSend<Slot>({ kind: 'slot:create', label, color, groupId, note });
+      setLabel(''); setNote('');
       if (where === 'here' && IN_OVERLAY) {
         toast('Akun dibuat. Tab ini dimuat ulang, lalu scan QR yang tampil.');
         await slotSend({ kind: 'slot:switch-here', id: s.id });
@@ -312,11 +315,15 @@ async function openSlot(s: Slot, toast: (t: string, bad?: boolean) => void) {
 // ---------- Main ----------
 const STATUS_FILTERS: [string, string][] = [['all', 'Semua status'], ['qr', 'Perlu scan QR'], ['online', 'Online'], ['loading', 'Memuat'], ['offline', 'Offline'], ['inactive', 'Tidak aktif']];
 
-export function AccountsHub() {
+export function AccountsHub({ resetSignal = 0 }: { resetSignal?: number }) {
   const slots = useSlots(), groups = useGroups(), now = useNow();
   const { push, el: toasts } = useToasts();
-  const [q, setQ] = useState(''), [fg, setFg] = useState('all'), [fs, setFs] = useState('all'), [sort, setSort] = useState<SortKey>('manual');
-  const [cards, setCards] = useState(false), [showArch, setShowArch] = useState(false);
+  const [q, setQ] = usePersistentState('hub.filters.q', ''), [fg, setFg, rFg] = usePersistentState('hub.filters.group', 'all'), [fs, setFs] = usePersistentState('hub.filters.status', 'all', (v): v is string => STATUS_FILTERS.some(([k]) => k === v));
+  const [sort, setSort] = usePersistentState<SortKey>('hub.sort', 'manual', (v): v is SortKey => v === 'name' || v === 'active' || v === 'unread' || v === 'created' || v === 'manual');
+  const [cards, setCards] = usePersistentState('hub.cards', false), [showArch, setShowArch] = usePersistentState('hub.archived', false);
+  const firstReset = useRef(resetSignal);
+  useEffect(() => { if (resetSignal !== firstReset.current) { setQ(''); setFg('all'); setFs('all'); setSort('manual'); setCards(false); setShowArch(false); } }, [resetSignal]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (rFg && fg !== 'all' && fg !== '__none__' && groups.length && !groups.some((g) => g.id === fg)) setFg('all'); }, [rFg, fg, groups, setFg]);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [dlg, setDlg] = useState<'add' | 'bulk' | null>(null), [del, setDel] = useState<Slot[] | null>(null), [detail, setDetail] = useState<string | null>(null);
   const [bulkGroup, setBulkGroup] = useState('');

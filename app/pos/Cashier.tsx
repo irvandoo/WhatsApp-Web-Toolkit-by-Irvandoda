@@ -6,7 +6,7 @@ import type { Contact } from '../shared/crm-types';
 import { computeTotals, fmtIdr, lineTotal } from '../shared/pos-logic';
 import {
   ORDER_STATUSES, PAY_LABEL, PAY_METHODS, STATUS_LABEL,
-  type Order, type OrderItem, type OrderStatus, type PosSettings, type Product,
+  type DiscountType, type Order, type OrderItem, type OrderStatus, type PayMethod, type PosSettings, type Product,
 } from '../shared/pos-types';
 import { availableFor, creditFromOrder, isCodeProduct, repriceLine, resolveUnitPrice, stockShortfalls, totalStock, TYPE_LABEL, typeOf } from '../shared/pos-products-logic';
 import { ScrollTable } from '../shared/ui/ScrollTable';

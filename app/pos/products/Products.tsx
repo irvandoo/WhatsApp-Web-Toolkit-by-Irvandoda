@@ -1,4 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
+import { usePersistentState } from '../../shared/ui/persist';
+import { oneOf } from '../../shared/ui/viewState';
 import { db } from '../../shared/db';
 import { fmtIdr } from '../../shared/pos-logic';
 import {
@@ -16,24 +18,39 @@ import { StockDialog } from './StockDialog';
 
 const STATUSES: StockStatus[] = ['habis', 'menipis', 'aman'];
 
+interface ProdFilter { type: '' | ProductType; cat: string; status: '' | StockStatus; q: string; archived: boolean }
+const DEF_FILTER: ProdFilter = { type: '', cat: '', status: '', q: '', archived: false };
+const isFilter = (v: unknown): v is ProdFilter => {
+  if (!v || typeof v !== 'object') return false;
+  const o = v as ProdFilter;
+  return (o.type === '' || (TYPES as string[]).includes(o.type)) && (o.status === '' || (STATUSES as string[]).includes(o.status))
+    && typeof o.cat === 'string' && typeof o.q === 'string' && typeof o.archived === 'boolean';
+};
+
 export function Products({ products }: { products: Product[] }) {
   const cats = useLive(async () => (await db.categories.toArray()).sort((a, b) => a.name.localeCompare(b.name)), [] as Category[]);
   const codes = useLive(() => db.licenseCodes.where('status').equals('tersedia').toArray(), [] as LicenseCode[]);
   const pools = useMemo(() => { const m: Record<string, number> = {}; for (const c of codes) m[c.productId] = (m[c.productId] ?? 0) + 1; return m; }, [codes]);
 
-  const [type, setType] = useState<'' | ProductType>('');
-  const [cat, setCat] = useState('');
-  const [status, setStatus] = useState<'' | StockStatus>('');
-  const [q, setQ] = useState('');
-  const [archived, setArchived] = useState(false);
+  const [f, setF] = usePersistentState<ProdFilter>('pos.products.filters', DEF_FILTER, isFilter);
+  const { type, cat, status, q, archived } = f;
+  const setType = (v: '' | ProductType) => setF((c) => ({ ...c, type: v }));
+  const setCat = (v: string) => setF((c) => ({ ...c, cat: v }));
+  const setStatus = (v: '' | StockStatus) => setF((c) => ({ ...c, status: v }));
+  const setQ = (v: string) => setF((c) => ({ ...c, q: v }));
+  const setArchived = (v: boolean) => setF((c) => ({ ...c, archived: v }));
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const [form, setForm] = useState<Draft | null>(null);
+  const [formEdit, setForm] = useState<Draft | null>(null);
+  // the "Tambah produk" form survives a refresh (its content lives in the pos.product.draft key)
+  const [newOpen, setNewOpen] = usePersistentState<boolean>('pos.product.newOpen', false);
+  const form = formEdit ?? (newOpen ? emptyDraft('fisik') : null);
+  const closeForm = () => { setForm(null); setNewOpen(false); };
   const [stockOf, setStockOf] = useState<string | null>(null);
   const [showCats, setShowCats] = useState(false);
   const [msg, setMsg] = useState('');
   const [bulkCat, setBulkCat] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
-  const [importType, setImportType] = useState<'fisik' | 'digital'>('fisik');
+  const [importType, setImportType] = usePersistentState<'fisik' | 'digital'>('pos.products.importType', 'fisik', oneOf(['fisik', 'digital'] as const));
 
   const live = useMemo(() => products.filter((p) => !p.archived), [products]);
   const sum = useMemo(() => stockSummary(live, pools), [live, pools]);
@@ -114,7 +131,7 @@ export function Products({ products }: { products: Product[] }) {
         <label className="chk"><input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} /> Arsip</label>
       </div>
       <div className="bar">
-        <button className="pri" onClick={() => setForm(emptyDraft(type || 'fisik'))}>Tambah produk</button>
+        <button className="pri" onClick={() => { setForm(null); setNewOpen(true); }}>Tambah produk</button>
         <span className="sp" />
         <select value={importType} onChange={(e) => setImportType(e.target.value as 'fisik' | 'digital')}>
           <option value="fisik">CSV fisik</option><option value="digital">CSV digital</option>
@@ -159,9 +176,9 @@ export function Products({ products }: { products: Product[] }) {
                   <td className="num">{p.cost == null ? '-' : fmtIdr(p.cost)}</td>
                   <td className={'num pm-s-' + st}>{t === 'jasa' ? '-' : tot == null ? '∞' : `${tot} ${t === 'digital' ? 'kode' : p.unit}`}{lv > 0 && <small> ({lv} varian menipis)</small>}</td>
                   <td className="num">
-                    <button onClick={() => setForm({ ...p })}>Ubah</button>{' '}
+                    <button onClick={() => { setNewOpen(false); setForm({ ...p }); }}>Ubah</button>{' '}
                     {t === 'fisik' && <button onClick={() => setStockOf(p.id)}>Stok</button>}{' '}
-                    <button onClick={() => setForm({ ...p, id: undefined, sku: '', name: p.name + ' (salinan)', variants: (p.variants ?? []).map((v) => ({ ...v, id: crypto.randomUUID(), sku: '' })) })}>Salin</button>
+                    <button onClick={() => { setNewOpen(false); setForm({ ...p, id: undefined, sku: '', name: p.name + ' (salinan)', variants: (p.variants ?? []).map((v) => ({ ...v, id: crypto.randomUUID(), sku: '' })) }); }}>Salin</button>
                   </td>
                 </tr>
               );
@@ -172,7 +189,7 @@ export function Products({ products }: { products: Product[] }) {
       </ScrollTable>
       {list.length > lim && <More shown={lim} total={list.length} onMore={more} />}
 
-      {form && <ProductForm key={form.id ?? 'new'} initial={form} products={products} cats={cats} onClose={() => setForm(null)} />}
+      {form && <ProductForm key={form.id ?? (formEdit ? 'copy' : 'new')} initial={form} products={products} cats={cats} persistKey={formEdit ? undefined : 'pos.product.draft'} onClose={closeForm} />}
       {stockProduct && <StockDialog product={stockProduct} onClose={() => setStockOf(null)} />}
       {showCats && <CategoryManager cats={cats} onClose={() => setShowCats(false)} />}
     </div>

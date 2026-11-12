@@ -3,6 +3,7 @@ import { ScrollTable } from '../shared/ui/ScrollTable';
 import { CREDIT, IS_FULL } from '../shared/credit';
 import type { Account, AccountGroup, RuntimeMsg } from '../shared/messages';
 import { isOnline, useAccounts, useGroups, useNow, useSessions } from '../shared/ui/hooks';
+import { clearPersisted, usePersistentState } from '../shared/ui/persist';
 import { AccountsHub } from './Hub';
 import { relTime, send, t } from '../shared/ui/i18n';
 
@@ -11,18 +12,21 @@ type AccountPatch = Extract<RuntimeMsg, { kind: 'account:update' }>['patch'];
 const NOGROUP = '__none__';
 
 export function App() {
-  const [tab, setTab] = useState<Tab>('accounts');
+  const [tab, setTab] = usePersistentState<Tab>('hub.tab', 'accounts', (v): v is Tab => v === 'accounts' || v === 'sessions' || v === 'registry' || v === 'about');
+  const [resetN, setResetN] = useState(0);
+  const resetView = () => { setTab('accounts'); setResetN((n) => n + 1); void clearPersisted('hub.'); };
   const hasSessions = useSessions().length > 0;
   const tabs: [Tab, string][] = [['accounts', t.tabAccounts], ...(hasSessions || tab === 'sessions' ? [['sessions', t.tabSessions + ' (usang)'] as [Tab, string]] : []), ['registry', t.tabRegistry], ['about', t.tabAbout]];
   return (
     <div className="page">
       <header className="top"><h1>{CREDIT.product} - {t.hub}</h1>
-        <a href="https://web.whatsapp.com" target="_blank" rel="noreferrer">{t.openWA}</a></header>
+        <span><button type="button" className="lnk" onClick={resetView} title="Kembalikan tab, filter, dan urutan ke pengaturan awal">Atur ulang tampilan</button>{' '}
+        <a href="https://web.whatsapp.com" target="_blank" rel="noreferrer">{t.openWA}</a></span></header>
       <nav role="tablist">
         {tabs.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>)}
       </nav>
       <div className={'pane' + (tab === 'sessions' ? ' fill' : '')}>
-      {tab === 'accounts' && <AccountsHub />}
+      {tab === 'accounts' && <AccountsHub resetSignal={resetN} />}
       {tab === 'sessions' && <Sessions />}
       {tab === 'registry' && <Registry />}
       {tab === 'about' && <AboutTab />}

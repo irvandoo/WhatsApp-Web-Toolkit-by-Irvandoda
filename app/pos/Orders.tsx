@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { usePersistentState } from '../shared/ui/persist';
 import { buildInvoiceText, fmtDateTime, fmtIdr, ordersToCsv } from '../shared/pos-logic';
 import { ORDER_STATUSES, PAY_LABEL, PAY_METHODS, STATUS_LABEL, type Order, type OrderStatus, type PayMethod, type PosSettings } from '../shared/pos-types';
 import { Invoice } from './Invoice';
@@ -9,9 +10,16 @@ import { WaPreview } from './WaPreview';
 
 interface Props { orders: Order[]; settings: PosSettings; selectedId: string | null; onSelect: (id: string | null) => void; onEdit: (o: Order) => void }
 
+interface OrdersFilter { q: string; st: '' | OrderStatus }
+const DEF_FILTER: OrdersFilter = { q: '', st: '' };
+const isFilter = (v: unknown): v is OrdersFilter => !!v && typeof v === 'object' && typeof (v as OrdersFilter).q === 'string'
+  && ((v as OrdersFilter).st === '' || (ORDER_STATUSES as string[]).includes((v as OrdersFilter).st));
+
 export function Orders({ orders, settings, selectedId, onSelect, onEdit }: Props) {
-  const [q, setQ] = useState('');
-  const [st, setSt] = useState<'' | OrderStatus>('');
+  const [f, setF] = usePersistentState<OrdersFilter>('pos.orders.filters', DEF_FILTER, isFilter);
+  const { q, st } = f;
+  const setQ = (v: string) => setF((c) => ({ ...c, q: v }));
+  const setSt = (v: '' | OrderStatus) => setF((c) => ({ ...c, st: v }));
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
     return orders.filter((o) => (!st || o.status === st) && (!s || o.number.toLowerCase().includes(s) || o.customerName.toLowerCase().includes(s) || o.customerPhone.includes(s)));

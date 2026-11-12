@@ -47,3 +47,4 @@ tr.picked,.card.picked{background:var(--wt-accent-soft)}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;margin:0;font-size:13px}.kv dt{color:var(--muted)}.kv dd{margin:0;word-break:break-all}
 .toasts{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;z-index:60;max-width:92vw}
 .toast{padding:8px 14px;font-size:13px}
+button.lnk{border:0;background:none;padding:0;color:inherit;text-decoration:underline;cursor:pointer;font-size:12px}

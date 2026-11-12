@@ -131,6 +131,18 @@ describe('planCampaign', () => {
     expect(r.items.map((i) => i.phone)).toEqual(['6281234567802']);
     expect(r.skipped.some((s) => s.reason.includes('{kode}'))).toBe(true);
   });
+  it('keeps duplicates when allowDuplicates is on (opt-out still skipped)', () => {
+    const r = planCampaign(base({
+      optOutPhones: new Set(['6281234567801']), allowDuplicates: true,
+      recipients: [{ phone: '6281234567801' }, { phone: '6281234567802' }, { phone: '6281234567802' }, { phone: '6281234567801' }],
+    }));
+    expect(r.items.map((i) => i.phone)).toEqual(['6281234567802', '6281234567802']);
+    expect(r.items[1].dueAt - r.items[0].dueAt).toBeGreaterThan(0);
+  });
+  it('csv parser keeps repeats when dedupe is off', () => {
+    expect(parseRecipients('081234567890\n081234567890', { dedupe: false }).recipients).toHaveLength(2);
+    expect(parseRecipients('081234567890\n081234567890').duplicates).toBe(1);
+  });
   it('draft mode ignores window/caps', () => {
     const r = planCampaign(base({ now: at('2026-03-02', 23), mode: 'draft', safety: safe({ windowEnabled: true }) }));
     expect(r.items[0].dueAt).toBe(at('2026-03-02', 23));

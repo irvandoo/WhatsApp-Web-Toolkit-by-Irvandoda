@@ -106,6 +106,8 @@ export interface CampaignInput {
   optInConfirmed: boolean;
   source: CampaignSource;
   accountId?: string;
+  /** true = keep repeated numbers (one message per row). Default false: duplicates are removed. */
+  allowDuplicates?: boolean;
 }
 
 export interface NextItem {

@@ -167,7 +167,8 @@ export function parseManualInput(text: string, opts: ParseOpts = {}): RecipientE
 }
 
 // ---------- merge ----------
-export interface MergedRecipient extends Recipient { source: RecipientSource; sources: RecipientSource[] }
+/** `key` is unique per row: the phone when deduping, `phone#n` for repeated numbers when duplicates are allowed. */
+export interface MergedRecipient extends Recipient { key: string; source: RecipientSource; sources: RecipientSource[] }
 export interface DuplicateInfo { phone: string; kept: RecipientSource; removed: RecipientSource[]; count: number }
 export interface InvalidInfo { original: string; reason: string; source: RecipientSource; listIndex: number; entryIndex: number }
 export interface ExcludedInfo { phone: string; reason: 'optout' | 'previous'; source: RecipientSource; name?: string }
@@ -178,10 +179,14 @@ export interface MergeOpts {
   excludeOptOut?: boolean;
   /** default false */
   excludePrevious?: boolean;
+  /** default true: remove repeated numbers. false = keep every occurrence (the same number gets one message per row). */
+  dedupe?: boolean;
   defaultCc?: string;
 }
 export interface MergeStats {
   total: number; unique: number; duplicates: number; invalid: number; optOut: number; previous: number;
+  /** extra occurrences kept because dedupe is off */
+  repeats: number;
   bySource: Record<RecipientSource, number>;
 }
 export interface MergeResult { unique: MergedRecipient[]; duplicates: DuplicateInfo[]; invalid: InvalidInfo[]; excluded: ExcludedInfo[]; stats: MergeStats }
@@ -194,11 +199,13 @@ export function entryPhone(e: RecipientEntry, cc = '62'): { phone: string } | { 
   return r.ok ? { phone: r.phone as string } : { reason: r.reason ?? 'tidak valid' };
 }
 
-/** Merge lists in order (first occurrence wins). Duplicates are removed automatically; names/vars are back-filled. */
+/** Merge lists in order (first occurrence wins). Duplicates are removed (names/vars back-filled) unless `dedupe: false`. */
 export function mergeRecipients(lists: { source: RecipientSource; entries: RecipientEntry[] }[], opts: MergeOpts = {}): MergeResult {
   const cc = opts.defaultCc ?? '62';
   const exOpt = opts.excludeOptOut ?? true;
   const exPrev = opts.excludePrevious ?? false;
+  const dedupe = opts.dedupe ?? true;
+  const occ = new Map<string, number>();
   const unique: MergedRecipient[] = [];
   const index = new Map<string, MergedRecipient>();
   const dups = new Map<string, DuplicateInfo>();
@@ -206,7 +213,7 @@ export function mergeRecipients(lists: { source: RecipientSource; entries: Recip
   const excluded: ExcludedInfo[] = [];
   const seenEx = new Set<string>();
   const bySource: Record<RecipientSource, number> = { manual: 0, label: 0, grup: 0, crm: 0, csv: 0 };
-  let total = 0, dupCount = 0, optN = 0, prevN = 0;
+  let total = 0, dupCount = 0, optN = 0, prevN = 0, repeats = 0;
 
   lists.forEach((list, li) => {
     list.entries.forEach((e, ei) => {
@@ -214,7 +221,7 @@ export function mergeRecipients(lists: { source: RecipientSource; entries: Recip
       const k = entryPhone(e, cc);
       if ('reason' in k) { invalid.push({ original: e.original ?? e.phone, reason: k.reason, source: list.source, listIndex: li, entryIndex: ei }); return; }
       const phone = k.phone;
-      const kept = index.get(phone);
+      const kept = dedupe ? index.get(phone) : undefined;
       if (kept) {
         dupCount++;
         let d = dups.get(phone);
@@ -229,7 +236,10 @@ export function mergeRecipients(lists: { source: RecipientSource; entries: Recip
       }
       if (exOpt && opts.optOut?.has(phone)) { optN++; if (!seenEx.has(phone)) { seenEx.add(phone); excluded.push({ phone, reason: 'optout', source: list.source, name: e.name }); } return; }
       if (exPrev && opts.previous?.has(phone)) { prevN++; if (!seenEx.has(phone)) { seenEx.add(phone); excluded.push({ phone, reason: 'previous', source: list.source, name: e.name }); } return; }
-      const r: MergedRecipient = { phone, source: list.source, sources: [list.source] };
+      const n = occ.get(phone) ?? 0;
+      occ.set(phone, n + 1);
+      if (n > 0) repeats++;
+      const r: MergedRecipient = { key: n ? `${phone}#${n}` : phone, phone, source: list.source, sources: [list.source] };
       if (e.name) r.name = e.name;
       if (e.vars) r.vars = { ...e.vars };
       if (e.contactKey) r.contactKey = e.contactKey;
@@ -241,7 +251,7 @@ export function mergeRecipients(lists: { source: RecipientSource; entries: Recip
   });
   return {
     unique, duplicates: [...dups.values()], invalid, excluded,
-    stats: { total, unique: unique.length, duplicates: dupCount, invalid: invalid.length, optOut: optN, previous: prevN, bySource },
+    stats: { total, unique: unique.length, duplicates: dupCount, invalid: invalid.length, optOut: optN, previous: prevN, repeats, bySource },
   };
 }
 

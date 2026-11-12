@@ -49,7 +49,7 @@ function download(name: string, data: string, mime: string) {
 
 const EXAMPLE = '+62 857-4747-6308\n0812 3456 7890, Budi\nSiti - 0813-1111-2222\n62 821 5555 6666';
 
-export function RecipientPicker({ onChange }: { onChange: (r: PickerResult) => void }) {
+export function RecipientPicker({ onChange, dedupe, onDedupeChange }: { onChange: (r: PickerResult) => void; dedupe: boolean; onDedupeChange: (v: boolean) => void }) {
   const [tab, setTab] = useState<PTab>('manual');
   const [manual, setManual] = useState('');
   const [autoFormat, setAutoFormat] = useState(true);
@@ -88,7 +88,7 @@ export function RecipientPicker({ onChange }: { onChange: (r: PickerResult) => v
   const optOut = useMemo(() => optOutPhoneSet(contacts), [contacts]);
 
   const manualEntries = useMemo(() => parseManualInput(manual, { autoFormat }), [manual, autoFormat]);
-  const csvParsed = useMemo(() => parseRecipients(csv), [csv]);
+  const csvParsed = useMemo(() => parseRecipients(csv, { dedupe }), [csv, dedupe]);
   const crm = useMemo(() => (crmOn ? recipientsFromContacts(contacts, { stage: stage || undefined, tag: tag || undefined }) : null), [crmOn, contacts, stage, tag]);
 
   const keyOf = (src: RecipientSource, orig: string) => `${src}\u0001${orig}`;
@@ -108,10 +108,10 @@ export function RecipientPicker({ onChange }: { onChange: (r: PickerResult) => v
   }, [manualEntries, extras, labelData, groupData, crm, csvParsed, dismissed]);
 
   const merged = useMemo(
-    () => mergeRecipients(lists, { optOut, previous, excludeOptOut: exOpt, excludePrevious: exPrev }),
-    [lists, optOut, previous, exOpt, exPrev],
+    () => mergeRecipients(lists, { optOut, previous, excludeOptOut: exOpt, excludePrevious: exPrev, dedupe }),
+    [lists, optOut, previous, exOpt, exPrev, dedupe],
   );
-  const finalList = useMemo(() => merged.unique.filter((r) => !removed.has(r.phone)), [merged, removed]);
+  const finalList = useMemo(() => merged.unique.filter((r) => !removed.has(r.key)), [merged, removed]);
 
   const source: CampaignSource = useMemo(() => {
     const used = new Set(finalList.flatMap((r) => r.sources));
@@ -209,7 +209,7 @@ export function RecipientPicker({ onChange }: { onChange: (r: PickerResult) => v
 
   const st = merged.stats;
   const manualInv = manualEntries.filter((e) => e.reason).length;
-  const manualDup = manualEntries.length - manualEntries.filter((e) => e.reason).length - new Set(manualEntries.filter((e) => !e.reason).map((e) => e.phone)).size;
+  const manualDup = !dedupe ? 0 : manualEntries.length - manualEntries.filter((e) => e.reason).length - new Set(manualEntries.filter((e) => !e.reason).map((e) => e.phone)).size;
 
   return (
     <div>
@@ -228,7 +228,7 @@ export function RecipientPicker({ onChange }: { onChange: (r: PickerResult) => v
           </label>
           <label className="chk" style={{ margin: '6px 0' }}><input type="checkbox" checked={autoFormat} onChange={(e) => setAutoFormat(e.target.checked)} />
             <span><b>Format otomatis</b>: <code>+62 857-4747-6308</code> menjadi <code>6285747476308</code> (tanpa +, spasi, atau tanda hubung). Mendukung <code>Nama, nomor</code> dan <code>Nama - nomor</code>.</span></label>
-          <p aria-live="polite" className="mut">{manualEntries.length - manualInv} valid{manualDup > 0 ? `, ${manualDup} duplikat dihapus` : ', 0 duplikat'}, {manualInv} tidak valid</p>
+          <p aria-live="polite" className="mut">{manualEntries.length - manualInv} valid{dedupe ? (manualDup > 0 ? `, ${manualDup} duplikat dihapus` : ', 0 duplikat') : ''}, {manualInv} tidak valid</p>
         </div>
       )}
 
@@ -322,8 +322,9 @@ export function RecipientPicker({ onChange }: { onChange: (r: PickerResult) => v
       {note && <p role="status" className="err">{note}</p>}
 
       <div className="rp-chips" aria-live="polite">
-        <span className="rp-chip ok"><b>{finalList.length}</b> penerima unik</span>
-        <span className="rp-chip warn">{st.duplicates} duplikat dihapus</span>
+        <span className="rp-chip ok"><b>{finalList.length}</b> {dedupe ? 'penerima unik' : 'penerima (pesan)'}</span>
+        {dedupe ? <span className="rp-chip warn">{st.duplicates} duplikat dihapus</span>
+          : st.repeats > 0 && <span className="rp-chip warn">{st.repeats} nomor berulang (dikirimi lebih dari sekali)</span>}
         <span className={`rp-chip ${st.invalid ? 'bad' : ''}`}>{st.invalid} tidak valid</span>
         {st.optOut > 0 && <span className="rp-chip">{st.optOut} opt-out dilewati</span>}
         {st.previous > 0 && <span className="rp-chip">{st.previous} sudah pernah dikirimi</span>}
@@ -332,6 +333,8 @@ export function RecipientPicker({ onChange }: { onChange: (r: PickerResult) => v
       </div>
 
       <div className="row">
+        <label className="chk"><input type="checkbox" checked={dedupe} onChange={(e) => { onDedupeChange(e.target.checked); setRemoved(new Set()); }} />
+          <span><b>Hapus nomor duplikat otomatis</b>{dedupe ? '' : ' (nonaktif: nomor yang sama boleh dikirimi lebih dari sekali, satu pesan per baris)'}</span></label>
         <label className="chk"><input type="checkbox" checked={exOpt} onChange={(e) => setExOpt(e.target.checked)} /><span>Lewati kontak CRM opt-out</span></label>
         <label className="chk"><input type="checkbox" checked={exPrev} onChange={(e) => setExPrev(e.target.checked)} /><span>Lewati nomor yang sudah pernah/sedang dikirimi kampanye</span></label>
       </div>
@@ -342,7 +345,7 @@ export function RecipientPicker({ onChange }: { onChange: (r: PickerResult) => v
         duplicates={merged.duplicates}
         excluded={merged.excluded}
         onFix={fixInvalid}
-        onRemove={(phone) => setRemoved((s) => new Set(s).add(phone))}
+        onRemove={(key) => setRemoved((s) => new Set(s).add(key))}
         onDismissInvalid={dismissAllInvalid}
         onExport={() => download('penerima.csv', recipientsToCsv(finalList), 'text/csv')}
         onReset={resetAll}

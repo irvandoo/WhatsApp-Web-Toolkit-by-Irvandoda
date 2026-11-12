@@ -120,7 +120,8 @@ const NAME_HEADERS = new Set(['nama', 'name']);
 const colKey = (h: string): string => h.trim().toLowerCase().replace(/[\s.-]+/g, '_').replace(/[^a-z0-9_]/g, '');
 
 /** CSV/paste parser. Header row optional (telepon,nama,...); extra columns become template variables. */
-export function parseRecipients(text: string): ParsedRecipients {
+export function parseRecipients(text: string, opts: { dedupe?: boolean } = {}): ParsedRecipients {
+  const dedupe = opts.dedupe ?? true;
   let src = String(text ?? '');
   if (!src.includes(',') && /[;\t]/.test(src)) src = src.replace(/[;\t]/g, ',');
   const rows = parseCsv(src);
@@ -143,7 +144,7 @@ export function parseRecipients(text: string): ParsedRecipients {
     if (!header) { const j = row.findIndex((c) => normalizePhone(c)); if (j >= 0) pi = j; }
     const phone = normalizePhone(row[pi] ?? '');
     if (!phone) { invalid.push({ line: i + 1, raw, reason: 'Nomor tidak valid (harus 10-15 digit)' }); continue; }
-    if (seen.has(phone)) { duplicates++; continue; }
+    if (dedupe && seen.has(phone)) { duplicates++; continue; }
     seen.add(phone);
     const r: Recipient = { phone };
     const vars: Record<string, string> = {};
@@ -196,14 +197,14 @@ export function recipientsFromContacts(contacts: Contact[], f: CrmFilter = {}): 
   return { recipients, skipped };
 }
 
-/** Merge lists (first wins), dedupe by phone, drop opted-out numbers. */
-export function mergeRecipients(lists: Recipient[][], optOutPhones: Set<string> = new Set()): { recipients: Recipient[]; duplicates: number; optedOut: number } {
+/** Merge lists (first wins), dedupe by phone (unless `dedupe` is false), drop opted-out numbers. */
+export function mergeRecipients(lists: Recipient[][], optOutPhones: Set<string> = new Set(), dedupe = true): { recipients: Recipient[]; duplicates: number; optedOut: number } {
   const seen = new Set<string>();
   const recipients: Recipient[] = [];
   let duplicates = 0, optedOut = 0;
   for (const r of lists.flat()) {
     if (optOutPhones.has(r.phone)) { optedOut++; continue; }
-    if (seen.has(r.phone)) { duplicates++; continue; }
+    if (dedupe && seen.has(r.phone)) { duplicates++; continue; }
     seen.add(r.phone);
     recipients.push(r);
   }
@@ -317,7 +318,7 @@ export function planCampaign(p: PlanInput): PlanResult {
   if (!p.optInConfirmed) errors.push('Centang "Penerima sudah opt-in" untuk melanjutkan.');
   if (!String(p.template ?? '').trim()) errors.push('Isi pesan masih kosong.');
   if (!String(p.name ?? '').trim()) errors.push('Nama kampanye wajib diisi.');
-  const merged = mergeRecipients([p.recipients], p.optOutPhones ?? new Set<string>());
+  const merged = mergeRecipients([p.recipients], p.optOutPhones ?? new Set<string>(), !p.allowDuplicates);
   const items: OutboxItem[] = [];
   const skipped: { phone: string; reason: string }[] = [];
   const sent = [...(p.history ?? [])];

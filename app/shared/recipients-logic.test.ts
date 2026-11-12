@@ -97,6 +97,13 @@ describe('mergeRecipients', () => {
     expect(b.unique.map((x) => x.phone)).toEqual(['6281234567890', '6281234567892']);
     expect(b.excluded[0]).toMatchObject({ phone: '6281234567891', reason: 'previous' });
   });
+  it('keeps repeated numbers when dedupe is off (opt-out still excluded)', () => {
+    const r = mergeRecipients([m('081234567890\n+62 812-3456-7890\n081234567899')], { dedupe: false, optOut: new Set(['6281234567899']) });
+    expect(r.unique.map((x) => x.phone)).toEqual(['6281234567890', '6281234567890']);
+    expect(r.unique.map((x) => x.key)).toEqual(['6281234567890', '6281234567890#1']);
+    expect(r.duplicates).toEqual([]);
+    expect(r.stats).toMatchObject({ unique: 2, duplicates: 0, repeats: 1, optOut: 1 });
+  });
   it('produces wizard shape and csv', () => {
     const r = mergeRecipients([{ source: 'crm', entries: entriesFromRecipients([{ phone: '6281234567890', name: 'Budi, "B"' }], 'crm') }]);
     expect(toCampaignRecipients(r.unique)).toEqual([{ phone: '6281234567890', name: 'Budi, "B"', vars: { nama: 'Budi, "B"' } }]);

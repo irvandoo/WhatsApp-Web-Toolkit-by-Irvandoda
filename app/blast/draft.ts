@@ -20,6 +20,7 @@ export interface WizardDraft {
   startLocal: string;
   recipients: Recipient[];
   source: CampaignSource;
+  allowDuplicates?: boolean;
 }
 export interface BlastDraft { v: 1; savedAt: number; tab?: string; wizard?: WizardDraft; schedule?: Schedule }
 
@@ -67,6 +68,7 @@ export function sanitizeDraft(raw: unknown): BlastDraft | null {
       optIn: w.optIn === true, later: w.later === true, startLocal: str(w.startLocal, 20),
       recipients: cleanRecipients(w.recipients),
       source: SOURCES.includes(w.source as CampaignSource) ? (w.source as CampaignSource) : 'csv',
+      allowDuplicates: w.allowDuplicates === true,
     };
   }
   const s = o.schedule as Record<string, unknown> | undefined;

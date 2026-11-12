@@ -27,7 +27,8 @@ export function RecipientTable({ unique, invalid, duplicates, excluded, onFix, o
   duplicates: DuplicateInfo[];
   excluded: ExcludedInfo[];
   onFix: (invalidIndex: number, value: string) => string | null;
-  onRemove: (phone: string) => void;
+  /** receives the row `key` */
+  onRemove: (key: string) => void;
   onDismissInvalid: () => void;
   onExport: () => void;
   onReset: () => void;
@@ -59,11 +60,11 @@ export function RecipientTable({ unique, invalid, duplicates, excluded, onFix, o
           <thead><tr><th className="num">#</th><th>Sumber</th><th>Nomor</th><th>Nama</th><th>Status</th><th>Aksi</th></tr></thead>
           <tbody>
             {okRows.map((r) => (
-              <tr key={r.phone}>
+              <tr key={r.key}>
                 <td className="num">{++row}</td>
                 <td><SrcBadge s={r.source} />{r.sources.length > 1 && <span className="mut" title={r.sources.map((s) => SOURCE_LABEL[s]).join(', ')}> +{r.sources.length - 1}</span>}</td>
                 <td>{r.phone}</td><td>{r.name ?? '-'}</td><td><span className="okc">Valid</span></td>
-                <td><button className="bad" aria-label={`Hapus ${r.phone}`} onClick={() => onRemove(r.phone)}>Hapus</button></td>
+                <td><button className="bad" aria-label={`Hapus ${r.phone}`} onClick={() => onRemove(r.key)}>Hapus</button></td>
               </tr>
             ))}
             {invRows.map(({ inv, idx }) => (

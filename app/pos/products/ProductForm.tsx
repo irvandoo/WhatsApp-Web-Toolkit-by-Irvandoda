@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { flushSync } from 'react-dom';
+import { usePersistentState } from '../../shared/ui/persist';
 import { db } from '../../shared/db';
 import { fmtIdr } from '../../shared/pos-logic';
 import {
@@ -64,12 +66,20 @@ function LicensePool({ productId }: { productId: string }) {
   );
 }
 
-export function ProductForm({ initial, products, cats, onClose }: { initial: Draft; products: Product[]; cats: Category[]; onClose: () => void }) {
-  const [d, setD] = useState<Draft>(initial);
+const isDraft = (v: unknown): v is Draft => !!v && typeof v === 'object' && !Array.isArray(v) && typeof (v as Draft).name === 'string';
+
+/** `persistKey` set = the "new product" form: its content is saved as a draft until the product is saved. */
+export function ProductForm({ initial, products, cats, onClose, persistKey }: { initial: Draft; products: Product[]; cats: Category[]; onClose: () => void; persistKey?: string }) {
+  const [pd, setPd, ready] = usePersistentState<Draft>(persistKey ?? 'pos.product.draft.unused', initial, isDraft);
+  const [ld, setLd] = useState<Draft>(initial);
+  const d = persistKey ? pd : ld;
+  const setD = persistKey ? setPd : setLd;
   const [err, setErr] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [tagText, setTagText] = useState((initial.tags ?? []).join(', '));
+  useEffect(() => { if (persistKey && ready) setTagText((pd.tags ?? []).join(', ')); }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
   const set = <K extends keyof Product>(k: K, v: Product[K] | undefined) => setD((e) => ({ ...e, [k]: v }));
+  const discardDraft = () => { if (persistKey) { flushSync(() => setPd(initial)); setTagText(''); } };
   const type = typeOf(d);
   const isNew = !d.id;
   const hasV = !!d.variants?.length;
@@ -108,9 +118,10 @@ export function ProductForm({ initial, products, cats, onClose }: { initial: Dra
     const errs = validateProduct(body);
     if (errs.length) { setErr(errs); return; }
     setBusy(true);
-    try { await send({ kind: 'pos:product:upsert', product: body }); onClose(); } catch (e) { setErr([(e as Error).message]); } finally { setBusy(false); }
+    try { await send({ kind: 'pos:product:upsert', product: body }); discardDraft(); onClose(); } catch (e) { setErr([(e as Error).message]); } finally { setBusy(false); }
   };
 
+  if (persistKey && !ready) return null;
   return (
     <div className="modal" onClick={onClose}>
       <div className="dlg pm-dlg" onClick={(e) => e.stopPropagation()}>
@@ -127,7 +138,7 @@ export function ProductForm({ initial, products, cats, onClose }: { initial: Dra
               {cats.map((c) => <option key={c.id}>{c.name}</option>)}
             </select>
           </label>
-          <label>Tag (pisah koma)<input value={tagText} onChange={(e) => setTagText(e.target.value)} /></label>
+          <label>Tag (pisah koma)<input value={tagText} onChange={(e) => { setTagText(e.target.value); set('tags', e.target.value.split(',').map((t) => t.trim()).filter(Boolean)); }} /></label>
           <label>Harga jual (Rp){hasV ? ' - dasar' : ''}<input type="number" min={0} value={d.price ?? 0} onChange={(e) => set('price', Math.max(0, Math.round(Number(e.target.value) || 0)))} /></label>
           <label>Harga modal (opsional)<input type="number" min={0} value={d.cost ?? ''} onChange={(e) => set('cost', numOrNull(e.target.value))} /></label>
           <label>Pajak khusus % (kosong = ikut pesanan)<input type="number" min={0} max={100} step="any" value={d.taxPct ?? ''} onChange={(e) => set('taxPct', e.target.value === '' ? null : Number(e.target.value))} /></label>
@@ -241,7 +252,7 @@ export function ProductForm({ initial, products, cats, onClose }: { initial: Dra
         )}
 
         {err.length > 0 && <div className="note err">{err.map((x, i) => <div key={i}>{x}</div>)}</div>}
-        <div className="bar"><span className="sp" /><button onClick={onClose}>Batal</button><button className="pri" disabled={busy || !d.name.trim()} onClick={() => void save()}>Simpan</button></div>
+        <div className="bar">{persistKey && <small className="mut">Draf tersimpan otomatis.</small>}<span className="sp" />{persistKey && <button onClick={discardDraft}>Kosongkan draf</button>}<button onClick={onClose}>Batal</button><button className="pri" disabled={busy || !d.name.trim()} onClick={() => void save()}>Simpan</button></div>
       </div>
     </div>
   );
