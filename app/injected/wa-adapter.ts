@@ -670,6 +670,7 @@ async function sendMediaViaApi(chat: Any, blob: Blob, mime: string, caption: str
         errs.push(`${label}: ${msg(e)} @ ${frames[0] ?? ''}`);
       }
     }
+    try { console.warn('[WWT] sumber sendToChat WA :: ' + String(job.sendToChat).replace(/\s+/g, ' ').slice(0, 3500)); } catch { /* ignore */ }
     return { error: `send-failed: modul prep=${prepFound?.from}, opaque=${createFound?.from}; sendToChat gagal [${errs[0] ?? ''}] (detail lengkap di konsol WhatsApp: [WWT] kirim gambar gagal; job: ${names(job)}; mediaData: ${names(job?.mediaData)})` };
   } catch (e) { return { error: `send-failed: tahap ${stage}: ${msg(e)}` }; }
 }
