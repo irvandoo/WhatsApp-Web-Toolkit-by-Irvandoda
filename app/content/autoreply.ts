@@ -1,3 +1,4 @@
+import { SOFT_TOKENS } from './soft-tokens';
 import { ROT_KEY, sanitizeRotStore, type RotStore } from '../shared/rotation';
 import { call } from './bridge';
 import { sendSilent } from './send-settings';
@@ -85,7 +86,7 @@ function toast(text: string) {
     toastHost.style.cssText = 'position:fixed;z-index:2147483646;left:50%;bottom:24px;transform:translateX(-50%);pointer-events:none';
     const root = toastHost.attachShadow({ mode: 'open' });
     const st = document.createElement('style');
-    st.textContent = '.t{font:13px system-ui,sans-serif;background:#111b21;color:#e9edef;border:1px solid #25d366;border-radius:8px;padding:8px 14px;box-shadow:0 4px 18px rgba(0,0,0,.35);max-width:420px}';
+    st.textContent = `:host{all:initial}${SOFT_TOKENS}.t{font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--s-bg);color:var(--s-fg);border:1px solid var(--s-bd);border-left:3px solid var(--s-ac);border-radius:12px;padding:9px 14px;box-shadow:var(--s-sh);max-width:420px}`;
     const d = document.createElement('div');
     d.className = 't'; d.setAttribute('role', 'status');
     root.append(st, d);

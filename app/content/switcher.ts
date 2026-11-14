@@ -101,10 +101,10 @@ export function mountSlotBinding(): void {
 
 const CSS = `
 :host{all:initial}*{box-sizing:border-box}
-.pop{--bg:#fff;--fg:#111b21;--mut:#667781;--bd:#e2e8ea;--hov:rgba(18,140,126,.1);--g:#128c7e;
+.pop{--bg:#fbfcfb;--fg:#26332e;--mut:#5a6862;--bd:#e3e9e6;--hov:rgba(56,163,98,.12);--g:#38a362;
  position:fixed;z-index:2147483601;width:292px;max-height:min(480px,80vh);overflow:auto;padding:6px;border-radius:12px;border:1px solid var(--bd);
  background:var(--bg);color:var(--fg);box-shadow:0 12px 40px rgba(0,0,0,.28);font:13px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-.pop.dark{--bg:#111b21;--fg:#e9edef;--mut:#8696a0;--bd:#26343c;--hov:rgba(37,211,102,.14);--g:#25d366}
+.pop.dark{--bg:#1b2420;--fg:#dfe8e3;--mut:#9aaaa3;--bd:#2d3a34;--hov:rgba(88,196,135,.16);--g:#58c487}
 button{font:inherit;color:inherit;cursor:pointer;background:transparent;border:0}
 button:focus-visible,input:focus-visible{outline:2px solid var(--g);outline-offset:1px}
 .row{display:flex;align-items:center;gap:4px;border-radius:8px}.row:hover{background:var(--hov)}

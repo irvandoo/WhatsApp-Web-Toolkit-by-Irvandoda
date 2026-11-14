@@ -77,3 +77,15 @@ button:focus-visible,a:focus-visible,summary:focus-visible{outline:none;box-shad
 .toast.bad{background:var(--wt-bad-soft);color:var(--wt-bad)}
 .ok{color:var(--wt-ok)}.err{color:var(--wt-bad)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+
+/* ===== polesan bersama untuk semua jendela ===== */
+nav[role=tablist]{display:inline-flex;align-self:flex-start;gap:2px;padding:3px;margin-bottom:12px;background:var(--wt-surface-2);border:1px solid var(--wt-border);border-radius:12px;flex-wrap:wrap;max-width:100%}
+nav[role=tablist] button{border:0;background:transparent;border-radius:9px;padding:6px 14px;color:var(--wt-text-muted);font-weight:500}
+nav[role=tablist] button:hover:not(:disabled){background:transparent;color:var(--wt-text)}
+nav[role=tablist] button.on,nav[role=tablist] button[aria-selected=true]{background:var(--wt-surface);color:var(--wt-accent-ink);font-weight:600;box-shadow:var(--wt-shadow)}
+h1{font-size:19px;font-weight:650}
+table th{font-size:12px;font-weight:600;color:var(--wt-text-muted);letter-spacing:.02em}
+.empty{color:var(--wt-text-muted);text-align:center;padding:18px 8px}
+::selection{background:var(--wt-accent-soft)}
+*{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--wt-text-muted) 40%,transparent) transparent}
+@media (max-width:640px){nav[role=tablist]{display:flex;overflow-x:auto;flex-wrap:nowrap}}

@@ -1,3 +1,4 @@
+import { SOFT_TOKENS } from './soft-tokens';
 import type { Contact, Template } from '../shared/crm-types';
 import type { ChatInfo } from '../shared/messages';
 import { type TplVars } from '../shared/template-engine';
@@ -44,10 +45,10 @@ function ensureHost() {
   const style = document.createElement('style');
   style.textContent = `
     :host{all:initial}
-    .box{font:13px system-ui,sans-serif;background:#fff;color:#111;border:1px solid #ccc;border-radius:8px;box-shadow:0 4px 18px rgba(0,0,0,.25);min-width:260px;max-width:360px;max-height:240px;overflow:auto}
-    @media (prefers-color-scheme:dark){.box{background:#233138;color:#e9edef;border-color:#3b4a54}}
-    .it{padding:6px 10px;cursor:pointer;display:flex;flex-direction:column;gap:2px}
-    .it.on{background:rgba(0,168,132,.2)}
+    ${SOFT_TOKENS}
+    .box{font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--s-bg);color:var(--s-fg);border:1px solid var(--s-bd);border-radius:12px;box-shadow:var(--s-sh);min-width:260px;max-width:360px;max-height:240px;overflow:auto;padding:4px}
+    .it{padding:6px 10px;cursor:pointer;display:flex;flex-direction:column;gap:2px;border-radius:8px}
+    .it.on{background:var(--s-soft)}
     .sc{font-weight:600}.ti{opacity:.7;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .hint{padding:4px 10px;font-size:11px;opacity:.6;border-top:1px solid rgba(128,128,128,.3)}`;
   listEl = document.createElement('div');

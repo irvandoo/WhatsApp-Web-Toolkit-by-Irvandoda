@@ -3,6 +3,7 @@
  * Strategy: synthetic paste (keeps newlines in Lexical) -> per-line insertText + line breaks -> plain insertText.
  * After each attempt the composer is read back and compared with the expected normalised text.
  */
+import { SOFT_TOKENS } from './soft-tokens';
 import { normalizeForWa } from '../shared/wa-format';
 
 export const COMPOSER_SELECTORS = [
@@ -198,7 +199,7 @@ export function showToast(msg: string, kind: 'ok' | 'err' = 'err'): void {
     toastHost.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:2147483647;pointer-events:none';
     const root = toastHost.attachShadow({ mode: 'open' });
     const st = document.createElement('style');
-    st.textContent = '.t{font:13px system-ui,sans-serif;color:#fff;padding:8px 14px;border-radius:8px;box-shadow:0 4px 18px rgba(0,0,0,.3);max-width:360px}.err{background:#b3261e}.ok{background:#128c7e}';
+    st.textContent = ':host{all:initial}' + SOFT_TOKENS + '.t{font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--s-bg);color:var(--s-fg);border:1px solid var(--s-bd);border-left:3px solid var(--s-ac);padding:9px 14px;border-radius:12px;box-shadow:var(--s-sh);max-width:360px}.t.err,.err{background:var(--s-badsoft);color:var(--s-bad);border-left-color:var(--s-bad)}.t.ok,.ok{border-left-color:var(--s-ac)}';
     const d = document.createElement('div');
     d.className = 't';
     root.append(st, d);

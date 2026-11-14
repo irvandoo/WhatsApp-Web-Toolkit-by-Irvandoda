@@ -1,3 +1,4 @@
+import { SOFT_TOKENS } from './soft-tokens';
 import { IS_FULL } from '../shared/credit';
 import type { PingResult, RegisteredResult } from '../shared/messages';
 import { isBlockedTarget } from '../shared/outbox-logic';
@@ -146,14 +147,15 @@ function ensureToastHost(): HTMLElement {
   const style = document.createElement('style');
   style.textContent = `
     :host{all:initial}
+    ${SOFT_TOKENS}
     .col{display:flex;flex-direction:column;gap:8px;max-width:340px;font:13px system-ui,sans-serif}
-    .card{background:#fff;color:#111;border:1px solid #ccc;border-left:4px solid #128c7e;border-radius:8px;box-shadow:0 4px 18px rgba(0,0,0,.25);padding:10px}
-    @media (prefers-color-scheme:dark){.card{background:#233138;color:#e9edef;border-color:#3b4a54;border-left-color:#25d366}}
+    .card{background:var(--s-bg);color:var(--s-fg);border:1px solid var(--s-bd);border-left:3px solid var(--s-ac);border-radius:12px;box-shadow:var(--s-sh);padding:12px}
     .t{font-weight:600;margin-bottom:4px}.p{opacity:.8;white-space:pre-wrap;max-height:80px;overflow:auto;margin-bottom:6px}
     .w{font-size:11px;opacity:.65;margin-bottom:6px}
     .b{display:flex;gap:6px;flex-wrap:wrap}
-    button{font:inherit;cursor:pointer;border:1px solid #bbb;border-radius:6px;background:transparent;color:inherit;padding:3px 8px}
-    button.pri{background:#128c7e;border-color:#128c7e;color:#fff}`;
+    button{font:inherit;cursor:pointer;border:1px solid var(--s-bd);border-radius:8px;background:var(--s-bg);color:inherit;padding:4px 10px}
+    button:hover{background:var(--s-bg2)}
+    button.pri{background:var(--s-soft);border-color:var(--s-ac);color:var(--s-ink);font-weight:600}`;
   box = document.createElement('div');
   box.className = 'col';
   box.setAttribute('role', 'region');

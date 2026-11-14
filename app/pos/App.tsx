@@ -35,7 +35,7 @@ export function App() {
   return (
     <div className="wrap">
       <h1 className="noprint">Kasir (POS) - WhatsApp Web Toolkit by Irvandoda <button className="sm" onClick={() => void resetView()} title="Kembalikan filter, tab, dan pilihan tampilan ke bawaan">Atur ulang tampilan</button></h1>
-      <nav className="noprint">{TABS.map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</nav>
+      <nav className="noprint" role="tablist" aria-label="Menu POS">{TABS.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</nav>
       <div className="main">
       {tabReady && !off && <>
       {settingsLive && tab === 'kasir' && (

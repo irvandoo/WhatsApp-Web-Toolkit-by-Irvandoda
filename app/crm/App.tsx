@@ -69,7 +69,7 @@ export function App() {
         <button onClick={() => setAdding('one')}>Tambah satu kontak</button>
         <button className="pri big" onClick={() => setAdding('dialog')}>+ Tambah ke CRM</button>
       </div>
-      <nav>{tabs.map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</nav>
+      <nav role="tablist" aria-label="Menu CRM">{tabs.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</nav>
       {msg && <p role="status" aria-live="polite" className="toast">{msg}</p>}
       {crmView && contacts.length > 0 && <FunnelBar rows={funnel} active={stageF} onPick={(s) => setStageF(stageF === s ? '' : s)} />}
       {crmView && contacts.length > 0 && (
