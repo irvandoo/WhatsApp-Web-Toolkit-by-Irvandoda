@@ -4,7 +4,7 @@ import type { Contact, CrmNote, PipelineConfig, Reminder, Template } from './crm
 import type { Slot } from './slots';
 import type { ArLogEntry, ArRule } from './autoreply-types';
 import type { Category, LicenseCode, Order, PosSettings, Product, StockMove } from './pos-types';
-import type { Campaign, OutboxItem, Schedule, SendLogEntry } from './outbox-types';
+import type { Campaign, CampaignMedia, OutboxItem, Schedule, SendLogEntry } from './outbox-types';
 import type { Account, AccountGroup, ArchivedMsg, SessionMeta } from './messages';
 
 export interface SessionBlob { id: string; payload: string } // JSON string of snapshot (see content/session.ts)
@@ -35,6 +35,7 @@ class ToolkitDB extends Dexie {
   stockMoves!: Table<StockMove, string>;
   licenseCodes!: Table<LicenseCode, string>;
   campaigns!: Table<Campaign, string>;
+  campaignMedia!: Table<CampaignMedia, string>;
   outbox!: Table<OutboxItem, string>;
   schedules!: Table<Schedule, string>;
   sendLog!: Table<SendLogEntry, string>;
@@ -85,6 +86,7 @@ class ToolkitDB extends Dexie {
       stockMoves: 'id, productId, ts',
       licenseCodes: 'id, productId, status, orderId',
     }).upgrade((tx) => tx.table('products').toCollection().modify((p: { type?: string }) => { if (!p.type) p.type = 'fisik'; }));
+    this.version(10).stores({ campaignMedia: 'id' });
   }
 }
 export const db = new ToolkitDB();

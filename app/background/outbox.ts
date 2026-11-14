@@ -1,4 +1,5 @@
 import { db } from '../shared/db';
+import { isValidMedia } from '../shared/image-logic';
 import { IS_FULL } from '../shared/credit';
 import {
   MAX_LATE_MS, assertSendable, autoSentTimes, bumpAfterSend, computeNextRun, nextSendable, normalizePhone, normalizeSafety,
@@ -160,7 +161,11 @@ export async function handleOutbox(m: ObMsg): Promise<unknown> {
         akun: (m.input.accountId && (await db.accounts.get(m.input.accountId))?.name) || undefined,
       });
       if (!plan.ok || !plan.campaign) return { ok: false, errors: plan.errors, skipped: plan.skipped };
-      await db.transaction('rw', db.campaigns, db.outbox, async () => { await db.campaigns.put(plan.campaign!); await db.outbox.bulkPut(plan.items); });
+      const media = m.input.media;
+      await db.transaction('rw', db.campaigns, db.outbox, db.campaignMedia, async () => {
+        await db.campaigns.put(plan.campaign!); await db.outbox.bulkPut(plan.items);
+        if (media) await db.campaignMedia.put({ ...media, id: plan.campaign!.id });
+      });
       return { ok: true, campaign: plan.campaign, skipped: plan.skipped, endAt: plan.endAt, mode: mode() };
     }
     case 'ob:campaign:list':
@@ -197,11 +202,16 @@ export async function handleOutbox(m: ObMsg): Promise<unknown> {
       return { ok: true };
     }
     case 'ob:campaign:delete':
-      await db.transaction('rw', db.campaigns, db.outbox, async () => {
+      await db.transaction('rw', db.campaigns, db.outbox, db.campaignMedia, async () => {
         await db.outbox.where('campaignId').equals(m.id).delete();
         await db.campaigns.delete(m.id);
+        await db.campaignMedia.delete(m.id);
       });
       return { ok: true };
+    case 'ob:media:get': {
+      const md = await db.campaignMedia.get(m.campaignId);
+      return md && isValidMedia(md) ? { ok: true, media: { name: md.name, mime: md.mime, bytes: md.bytes, dataUrl: md.dataUrl } } : { ok: false, error: 'media-missing' };
+    }
     case 'ob:items:list':
       return (await db.outbox.where('campaignId').equals(m.campaignId).toArray()).sort((a, b) => a.dueAt - b.dueAt);
 

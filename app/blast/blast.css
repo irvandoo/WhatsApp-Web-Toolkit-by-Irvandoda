@@ -70,3 +70,9 @@ pre.mini{margin:0;white-space:pre-wrap;font:12px ui-monospace,Consolas,monospace
 
 /* Data & Cadangan */
 .datalist{margin:6px 0 0;padding-left:18px;line-height:1.7}
+
+/* gambar blast */
+.mediabox{border:1px dashed var(--bd,#9994);border-radius:8px;padding:10px;margin-bottom:10px}
+.mediabox .thumb,.preview .thumb{max-width:120px;max-height:120px;border-radius:6px;object-fit:cover;display:block}
+.preview .thumb.big{max-width:240px;max-height:240px;margin-bottom:6px}
+label.btn{display:inline-block;cursor:pointer;border:1px solid var(--bd,#9996);border-radius:6px;padding:4px 10px}

@@ -7,6 +7,7 @@ import {
   type ChatContact, type ChatsContactsResult, type LabelInfo, type LabelChat, type LabelsListResult, type LabelChatsResult, type SendResult, type ProbeItem, type ProbeResult,
 } from '../shared/messages';
 import { insertIntoComposer } from '../content/composer-insert';
+import { dataUrlToBlob, isValidMedia } from '../shared/image-logic';
 import type { InboxItem } from '../shared/autoreply-types';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -599,6 +600,89 @@ async function sendText(chatId: string, text: string, allowDom = false, verify =
   return { ok: true, method: res.method, verified };
 }
 
+// ---- Image sending (send:media). Same rules as text: internal API first, visible DOM macro only when allowed. UNVERIFIED module names. ----
+/** True when a recent fromMe image shows up in the chat (caption compared when one was sent). */
+async function verifyMediaSent(chat: Any, caption: string, since: number, waitMs = 15_000): Promise<boolean> {
+  const end = Date.now() + waitMs;
+  const want = caption.trim();
+  do {
+    for (const m of msgsOf(chat)) {
+      if (!m?.id?.fromMe || typeof m.t !== 'number' || m.type !== 'image') continue;
+      if (toMs(m.t) < since - 3000) continue;
+      if (!want || String(m.caption ?? '').trim() === want) return true;
+    }
+    await sleepMs(500);
+  } while (Date.now() < end);
+  return false;
+}
+
+async function sendMediaViaApi(chat: Any, blob: Blob, mime: string, caption: string): Promise<{ method: string } | { error: string }> {
+  const prep = req('WAWebMediaPrep');
+  const opq = req('WAWebMediaOpaqueData');
+  const prepRaw = prep?.prepRawMedia ?? prep?.default?.prepRawMedia;
+  const create = opq?.createFromData ?? opq?.default?.createFromData ?? opq?.OpaqueData?.createFromData;
+  if (typeof prepRaw !== 'function' || typeof create !== 'function') return { error: 'send-unavailable' };
+  try {
+    const file = new File([blob], mime === 'image/png' ? 'gambar.png' : 'gambar.jpg', { type: mime });
+    const opaque = await create(file, mime);
+    const job = prepRaw(opaque, { isViewOnce: false });
+    if (typeof job?.waitForPrep === 'function') await job.waitForPrep();
+    if (typeof job?.sendToChat !== 'function') return { error: 'send-unavailable' };
+    const r = await job.sendToChat(chat, caption ? { caption } : {});
+    if (SENDERR(r)) return { error: 'send-failed' };
+    return { method: 'WAWebMediaPrep.sendToChat' };
+  } catch { return { error: 'send-failed' }; }
+}
+
+const waitFor = async <T,>(fn: () => T | null | undefined, ms: number): Promise<T | null> => {
+  const end = Date.now() + ms;
+  do { const v = fn(); if (v) return v; await sleepMs(150); } while (Date.now() < end);
+  return null;
+};
+/** VISIBLE fallback: opens the chat, pastes the image into the composer, types the caption in the media preview, clicks send, restores the chat. */
+async function sendMediaViaDom(chat: Any, blob: Blob, mime: string, caption: string): Promise<{ method: string } | { error: string }> {
+  const prev = activeChat();
+  try {
+    if (!(await openChat(chat))) return { error: 'send-unavailable' };
+    const composer = document.querySelector<HTMLElement>('footer [contenteditable="true"]');
+    if (!composer) return { error: 'send-unavailable' };
+    composer.focus();
+    const dt = new DataTransfer();
+    dt.items.add(new File([blob], mime === 'image/png' ? 'gambar.png' : 'gambar.jpg', { type: mime }));
+    composer.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    // the media preview replaces the composer: its caption box is a contenteditable outside <footer>
+    const cap = await waitFor(() => document.querySelector<HTMLElement>('[data-testid="media-caption-input-container"] [contenteditable="true"], div[role="dialog"] [contenteditable="true"], [data-animate-media-viewer] [contenteditable="true"]'), 6000);
+    if (!cap) return { error: 'send-unavailable' };
+    if (caption) {
+      const r = await insertIntoComposer(caption, { mode: 'replace', composer: cap });
+      if (!r.ok) return { error: 'send-unavailable' };
+      await sleepMs(150);
+    }
+    const icons = [...document.querySelectorAll<HTMLElement>('[data-icon="send"], [data-icon="wds-ic-send-filled"], [data-testid="send"]')];
+    const btn = icons.length ? ((icons[icons.length - 1].closest('button,[role="button"]') as HTMLElement | null) ?? icons[icons.length - 1]) : null;
+    if (!btn) return { error: 'send-unavailable' };
+    btn.click();
+    return { method: 'dom-paste' };
+  } finally {
+    if (prev && prev !== chat) { try { await openChat(prev); } catch { /* ignore */ } }
+  }
+}
+
+/** Image send with optional caption. Same guarantees as sendText: never fakes success, `verified` says whether it was seen in the chat. */
+async function sendMedia(chatId: string, dataUrl: string, mime: string, caption: string, allowDom = false, verify = true): Promise<SendResult> {
+  if (isBlockedId(chatId) || !isValidMedia({ name: 'x', mime, bytes: 0, dataUrl })) throw new Error('send-rejected');
+  const blob = dataUrlToBlob(dataUrl);
+  if (!blob) throw new Error('send-rejected');
+  const chat = await resolveChat(chatId);
+  if (!chat) throw new Error('chat-not-found');
+  const since = Date.now();
+  let res = await sendMediaViaApi(chat, blob, mime, caption);
+  if ('error' in res && res.error === 'send-unavailable' && allowDom) res = await sendMediaViaDom(chat, blob, mime, caption);
+  if ('error' in res) throw new Error(res.error);
+  const verified = verify ? await verifyMediaSent(chat, caption, since) : false;
+  return { ok: true, method: res.method, verified };
+}
+
 // ---- send:probe: report what exists, never sends ----
 function fnItem(group: string, name: string, v: Any, fn: string): ProbeItem {
   const t = v?.[fn];
@@ -623,6 +707,8 @@ function probe(): ProbeResult {
   add('Kirim pesan', 'WAWebMessageSender', ['sendTextMsgToChat', 'addAndSendTextMsg']);
   const sample = chatsColl()[0];
   items.push(fnItem('Kirim pesan', 'chat (contoh)', sample, 'sendMessage'));
+  add('Kirim gambar', 'WAWebMediaPrep', ['prepRawMedia']);
+  add('Kirim gambar', 'WAWebMediaOpaqueData', ['createFromData']);
   add('Makro DOM', 'WAWebCmd', []);
   const cmd = req('WAWebCmd');
   items.push(fnItem('Makro DOM', 'WAWebCmd.Cmd', cmd?.Cmd ?? cmd, 'openChatBottom'));
@@ -712,6 +798,8 @@ async function handle(r: BridgeRequest): Promise<BridgeResponse> {
       return { id: r.id, ok: true, data: pollInbox(Number(r.sinceTs) || 0, r.includeGroups === true) };
     case 'send:text':
       return { id: r.id, ok: true, data: await sendText(r.chatId, r.text, r.allowDom === true, r.verify !== false, r.group === true) };
+    case 'send:media':
+      return { id: r.id, ok: true, data: await sendMedia(r.chatId, r.dataUrl, r.mime, r.caption ?? '', r.allowDom === true, r.verify !== false) };
     case 'send:probe':
       return { id: r.id, ok: true, data: probe() };
     case 'send:self-test':

@@ -1,6 +1,7 @@
 import { formatDuration, parseCsv, toCsv } from './analytics-logic';
 import type { Contact } from './crm-types';
 import { render, type TplVars } from './template-engine';
+import { isValidMedia } from './image-logic';
 import type {
   Campaign, CampaignInput, CampaignSource, OutboxItem, Recipient, Recurrence, SafetySettings, Schedule, SendLogEntry, SendMode,
 } from './outbox-types';
@@ -316,7 +317,8 @@ export function planCampaign(p: PlanInput): PlanResult {
   const safety = normalizeSafety(p.safety);
   const startAt = Math.max(p.startAt ?? p.now, p.now);
   if (!p.optInConfirmed) errors.push('Centang "Penerima sudah opt-in" untuk melanjutkan.');
-  if (!String(p.template ?? '').trim()) errors.push('Isi pesan masih kosong.');
+  if (p.media && !isValidMedia(p.media)) errors.push('Gambar tidak valid (format harus JPG/PNG/WebP dan ukuran maksimal 4 MB).');
+  if (!String(p.template ?? '').trim() && !p.media) errors.push('Isi pesan masih kosong. Tulis pesan atau lampirkan gambar.');
   if (!String(p.name ?? '').trim()) errors.push('Nama kampanye wajib diisi.');
   const merged = mergeRecipients([p.recipients], p.optOutPhones ?? new Set<string>(), !p.allowDuplicates);
   const items: OutboxItem[] = [];
@@ -328,7 +330,7 @@ export function planCampaign(p: PlanInput): PlanResult {
     const phone = normalizePhone(r.phone);
     if (!phone) { skipped.push({ phone: r.phone, reason: 'Nomor tidak valid' }); continue; }
     const { text, unresolved } = renderMessage(p.template, { ...r, phone }, { akun: p.akun, now: p.now }, rng);
-    if (!text) { skipped.push({ phone, reason: 'Pesan kosong' }); continue; }
+    if (!text && !p.media) { skipped.push({ phone, reason: 'Pesan kosong' }); continue; }
     if (unresolved.length) { skipped.push({ phone, reason: `Variabel belum terisi: ${unresolved.map((u) => `{${u}}`).join(' ')}` }); continue; }
     const cand = items.length === 0 ? startAt : prev + randDelayMs(safety, rng);
     const due = p.mode === 'draft' ? cand : placeSend(cand, safety, sent, first);
@@ -344,6 +346,7 @@ export function planCampaign(p: PlanInput): PlanResult {
   const campaign: Campaign = {
     id: p.id, name: p.name.trim(), template: p.template, status: 'running', source: p.source as CampaignSource, createdAt: p.now, startAt,
     safety, optInConfirmed: !!p.optInConfirmed, total: items.length, accountId: p.accountId, scheduleId: p.scheduleId,
+    ...(p.media ? { media: { name: p.media.name, mime: p.media.mime, bytes: p.media.bytes } } : {}),
   };
   return { ok: true, errors, campaign, items, skipped, startAt, endAt, durationMs: endAt - startAt };
 }
@@ -368,7 +371,7 @@ export function assertSendable(item: OutboxItem, campaign: Campaign | undefined,
   if (isBlockedTarget(item.phone) || isBlockedTarget(item.chatId ?? '')) return 'Grup/broadcast/status tidak diizinkan';
   if (normalizePhone(item.phone) !== item.phone) return 'Nomor tidak valid';
   if (optOut.has(item.phone)) return 'Kontak opt-out di CRM';
-  if (!item.text.trim()) return 'Pesan kosong';
+  if (!item.text.trim() && !campaign.media) return 'Pesan kosong';
   return null;
 }
 

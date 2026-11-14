@@ -10,6 +10,12 @@ export async function loadSendSettings(): Promise<SendSettings> {
   } catch { return { ...DEFAULT_SEND_SETTINGS }; }
 }
 
+/** Silent image send (optional caption) through the adapter. Same error codes as sendSilent. */
+export async function sendSilentMedia(chatId: string, media: { dataUrl: string; mime: string }, caption: string, opts: { timeoutMs?: number } = {}): Promise<SendResult> {
+  const s = await loadSendSettings();
+  return call<SendResult>({ type: 'send:media', chatId, dataUrl: media.dataUrl, mime: media.mime, caption, allowDom: s.allowDomMacro, verify: true }, opts.timeoutMs ?? 90_000);
+}
+
 /** Silent send through the adapter's strategy chain. Rejects with the adapter error code ('send-unavailable', ...). */
 export async function sendSilent(chatId: string, text: string, opts: { group?: boolean; timeoutMs?: number } = {}): Promise<SendResult> {
   const s = await loadSendSettings();

@@ -27,6 +27,12 @@ export interface Recipient {
   stage?: string;
 }
 
+/** Image attached to a blast (metadata only; the bytes live in the `campaignMedia` table, once per campaign). */
+export interface MediaMeta { name: string; mime: string; bytes: number }
+/** Image as picked in the UI: metadata + data URL (compressed JPEG/PNG/WebP). */
+export interface MediaInput extends MediaMeta { dataUrl: string }
+export interface CampaignMedia extends MediaInput { id: string }  // id = campaign id
+
 export interface Campaign {
   id: string;
   name: string;
@@ -42,6 +48,7 @@ export interface Campaign {
   scheduleId?: string;
   pausedReason?: string;
   doneAt?: number;
+  media?: MediaMeta;              // image sent with every message (caption = rendered text, may be empty)
 }
 
 export interface OutboxItem {
@@ -108,6 +115,8 @@ export interface CampaignInput {
   accountId?: string;
   /** true = keep repeated numbers (one message per row). Default false: duplicates are removed. */
   allowDuplicates?: boolean;
+  /** optional image: the message text becomes its caption (and may then be empty). */
+  media?: MediaInput;
 }
 
 export interface NextItem {
@@ -127,6 +136,7 @@ export type ObMsg =
   | { kind: 'ob:campaign:stop'; id: string }
   | { kind: 'ob:campaign:delete'; id: string }
   | { kind: 'ob:items:list'; campaignId: string }
+  | { kind: 'ob:media:get'; campaignId: string }
   | { kind: 'ob:schedule:upsert'; schedule: Schedule }
   | { kind: 'ob:schedule:list' }
   | { kind: 'ob:schedule:delete'; id: string }

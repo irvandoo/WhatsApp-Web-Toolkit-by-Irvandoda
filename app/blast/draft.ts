@@ -1,5 +1,6 @@
 import { normalizeSafety } from '../shared/outbox-logic';
-import type { CampaignSource, Recipient, SafetySettings, Schedule } from '../shared/outbox-types';
+import { isValidMedia } from '../shared/image-logic';
+import type { CampaignSource, MediaInput, Recipient, SafetySettings, Schedule } from '../shared/outbox-types';
 
 /**
  * Work-in-progress of the Blast page, kept in chrome.storage.local (on this PC, in the browser profile) so a refresh of the
@@ -21,6 +22,7 @@ export interface WizardDraft {
   recipients: Recipient[];
   source: CampaignSource;
   allowDuplicates?: boolean;
+  media?: MediaInput;
 }
 export interface BlastDraft { v: 1; savedAt: number; tab?: string; wizard?: WizardDraft; schedule?: Schedule }
 
@@ -70,6 +72,11 @@ export function sanitizeDraft(raw: unknown): BlastDraft | null {
       source: SOURCES.includes(w.source as CampaignSource) ? (w.source as CampaignSource) : 'csv',
       allowDuplicates: w.allowDuplicates === true,
     };
+    const md = w.media as Record<string, unknown> | undefined;
+    if (md && typeof md === 'object') {
+      const media: MediaInput = { name: str(md.name, 120) || 'gambar', mime: str(md.mime, 20), bytes: Number(md.bytes) || 0, dataUrl: typeof md.dataUrl === 'string' ? md.dataUrl : '' };
+      if (isValidMedia(media)) out.wizard.media = media;
+    }
   }
   const s = o.schedule as Record<string, unknown> | undefined;
   if (s && typeof s === 'object' && typeof s.id === 'string' && s.recurrence && typeof s.recurrence === 'object' && s.target && typeof s.target === 'object') {
@@ -81,7 +88,7 @@ export function sanitizeDraft(raw: unknown): BlastDraft | null {
 /** True when the draft holds anything worth restoring (nothing typed yet = nothing to announce). */
 export function hasContent(d: BlastDraft | null): boolean {
   const w = d?.wizard;
-  return !!w && (w.recipients.length > 0 || !!w.name.trim() || !!w.body.trim());
+  return !!w && (w.recipients.length > 0 || !!w.name.trim() || !!w.body.trim() || !!w.media);
 }
 
 export async function loadDraft(): Promise<BlastDraft | null> {

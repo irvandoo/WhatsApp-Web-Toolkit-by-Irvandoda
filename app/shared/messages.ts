@@ -29,6 +29,7 @@ export type BridgeRequest =
   | { id: string; type: 'activity:scan' }
   | { id: string; type: 'inbox:poll'; sinceTs: number; includeGroups?: boolean }
   | { id: string; type: 'send:text'; chatId: string; text: string; allowDom?: boolean; verify?: boolean; group?: boolean }
+  | { id: string; type: 'send:media'; chatId: string; dataUrl: string; mime: string; caption?: string; allowDom?: boolean; verify?: boolean }
   | { id: string; type: 'send:probe' }
   | { id: string; type: 'send:self-test'; allowDom?: boolean }
   | { id: string; type: 'check:registered'; phones: string[] };

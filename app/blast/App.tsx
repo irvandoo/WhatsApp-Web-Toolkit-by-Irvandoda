@@ -9,13 +9,15 @@ import type { Contact, Reminder, Template } from '../shared/crm-types';
 import { db } from '../shared/db';
 import { ScrollTable } from '../shared/ui/ScrollTable';
 import { PhoneField } from './PhoneField';
+import { prepareImage } from './image-prep';
+import { formatBytes } from '../shared/image-logic';
 import { RecipientPicker, type PickerResult } from './RecipientPicker';
 import {
   DEFAULT_SAFETY, WARMUP_CAPS, autoSentTimes, countByStatus, describeDuration, logToCsv, normalizeSafety, optOutPhoneSet,
   planCampaign, renderMessage,
 } from '../shared/outbox-logic';
 import type {
-  Campaign, CampaignSource, ObMsg, OutboxItem, Recipient, Recurrence, SafetySettings, Schedule, SendLogEntry,
+  Campaign, CampaignSource, MediaInput, ObMsg, OutboxItem, Recipient, Recurrence, SafetySettings, Schedule, SendLogEntry,
 } from '../shared/outbox-types';
 
 const send = <T,>(m: ObMsg): Promise<T> => chrome.runtime.sendMessage(m) as Promise<T>;
@@ -211,6 +213,9 @@ function Wizard({ onStarted, initial }: { onStarted: () => void; initial?: Wizar
   const [pickKey, setPickKey] = useState(0);
   const [allowDup, setAllowDup] = useState(initial?.allowDuplicates ?? false);
   const [body, setBody] = useState(initial?.body ?? '');
+  const [media, setMedia] = useState<MediaInput | null>(initial?.media ?? null);
+  const [mediaErr, setMediaErr] = useState('');
+  const [mediaBusy, setMediaBusy] = useState(false);
   const [safety, setSafety] = useState<SafetySettings>(initial?.safety ?? DEFAULT_SAFETY);
   const [optIn, setOptIn] = useState(initial?.optIn ?? false);
   const [later, setLater] = useState(initial?.later ?? false);
@@ -225,7 +230,7 @@ function Wizard({ onStarted, initial }: { onStarted: () => void; initial?: Wizar
   const earliest = useLive(async () => (await db.sendLog.orderBy('ts').filter((e) => e.status === 'sent' && e.mode === 'auto').first())?.ts ?? null, null as number | null);
 
   // Auto-save everything typed so far (survives a refresh, closing the overlay, or switching tabs).
-  useEffect(() => { saveDraftPart({ wizard: { step, name, body, safety, optIn, later, startLocal, recipients: picked.recipients, source: picked.source, allowDuplicates: allowDup } }); }, [step, name, body, safety, optIn, later, startLocal, picked, allowDup]);
+  useEffect(() => { saveDraftPart({ wizard: { step, name, body, safety, optIn, later, startLocal, recipients: picked.recipients, source: picked.source, allowDuplicates: allowDup, media: media ?? undefined } }); }, [step, name, body, safety, optIn, later, startLocal, picked, allowDup, media]);
   useEffect(() => () => { void flushDraftNow(); }, []);
   const onPick = useCallback((r: PickerResult) => {
     if (restoredRef.current && r.recipients.length === 0) return; // the picker starts empty: keep the saved recipients until the user chooses new ones
@@ -245,28 +250,34 @@ function Wizard({ onStarted, initial }: { onStarted: () => void; initial?: Wizar
     let n = 0;
     return planCampaign({
       id: 'preview', name: name || 'Pratinjau', template: body, recipients, safety: safe, optInConfirmed: optIn, source, startAt,
-      now: Date.now(), history, optOutPhones: optOut, mode: IS_FULL ? 'auto' : 'draft', genId: () => `p${++n}`, allowDuplicates: allowDup,
+      now: Date.now(), history, optOutPhones: optOut, mode: IS_FULL ? 'auto' : 'draft', genId: () => `p${++n}`, allowDuplicates: allowDup, media: media ?? undefined,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, body, recipients, safe, optIn, source, startAt, recent, earliest, optOut, allowDup]);
+  }, [name, body, recipients, safe, optIn, source, startAt, recent, earliest, optOut, allowDup, media]);
 
   const sample: Recipient = recipients[0] ?? { phone: '6281234567890', name: 'Budi' };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const prev = useMemo(() => renderMessage(body, sample, {}, Math.random), [body, sample.phone, seed]);
 
+  const pickImage = async (f: File | undefined) => {
+    if (!f) return;
+    setMediaErr(''); setMediaBusy(true);
+    try { setMedia(await prepareImage(f)); } catch (e) { setMediaErr(e instanceof Error ? e.message : 'Gagal memuat gambar.'); } finally { setMediaBusy(false); }
+  };
+
   const chooseTpl = (id: string) => { const t = templates.find((x) => x.id === id); if (t) setBody(t.body); };
 
-  const canNext = step === 1 ? recipients.length > 0 : step === 2 ? !!body.trim() : step === 3 ? optIn : true;
+  const canNext = step === 1 ? recipients.length > 0 : step === 2 ? !!body.trim() || !!media : step === 3 ? optIn : true;
 
   const start = async () => {
     setBusy(true); setErrs([]);
     try {
       const r = await send<{ ok: boolean; errors?: string[] }>({
         kind: 'ob:campaign:create',
-        input: { name: name.trim(), template: body, recipients, safety: safe, startAt, optInConfirmed: optIn, source, allowDuplicates: allowDup },
+        input: { name: name.trim(), template: body, recipients, safety: safe, startAt, optInConfirmed: optIn, source, allowDuplicates: allowDup, media: media ?? undefined },
       });
       if (!r?.ok) { setErrs(r?.errors ?? ['Gagal membuat kampanye.']); return; }
-      setStep(1); setName(''); setBody(''); setOptIn(false); setPickKey((k) => k + 1);
+      setStep(1); setName(''); setBody(''); setMedia(null); setOptIn(false); setPickKey((k) => k + 1);
       onStarted();
     } catch (e) { setErrs([String(e)]); }
     finally { setBusy(false); }
@@ -297,12 +308,35 @@ function Wizard({ onStarted, initial }: { onStarted: () => void; initial?: Wizar
               <option value="">Pilih dari template...</option>{templates.map((t) => <option key={t.id} value={t.id}>/{t.shortcut} - {t.title}</option>)}
             </select>
           </div>
-          <label className="f">Isi pesan
-            <textarea rows={6} value={body} onChange={(e) => setBody(e.target.value)} placeholder="{Halo|Hai} {nama}, ..." />
+          <div className="mediabox">
+            <b>Gambar (opsional)</b>
+            <p className="mut" style={{ margin: '2px 0 6px' }}>Lampirkan gambar produk/promo. Gambar yang sama dikirim ke semua penerima; teks di bawah menjadi <b>caption</b>-nya (boleh dikosongkan). Gambar diperkecil otomatis (maks 1600 px) dan disimpan hanya di komputer ini.</p>
+            {media ? (
+              <div className="row" style={{ alignItems: 'flex-start' }}>
+                <img className="thumb" src={media.dataUrl} alt={`Gambar terlampir: ${media.name}`} />
+                <div>
+                  <div>{media.name}</div>
+                  <div className="mut">{formatBytes(media.bytes)} · {media.mime === 'image/png' ? 'PNG' : 'JPG'}</div>
+                  <div className="row" style={{ marginTop: 6 }}>
+                    <label className="btn">Ganti<input type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => { void pickImage(e.target.files?.[0]); e.target.value = ''; }} /></label>
+                    <button className="bad" onClick={() => { setMedia(null); setMediaErr(''); }}>Hapus gambar</button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <label className="btn">{mediaBusy ? 'Memproses…' : 'Pilih gambar'}<input type="file" accept="image/jpeg,image/png,image/webp" hidden disabled={mediaBusy} onChange={(e) => { void pickImage(e.target.files?.[0]); e.target.value = ''; }} /></label>
+            )}
+            {mediaErr && <p className="err" role="alert">{mediaErr}</p>}
+          </div>
+          <label className="f">{media ? 'Caption gambar (opsional)' : 'Isi pesan'}
+            <textarea rows={media ? 4 : 6} value={body} onChange={(e) => setBody(e.target.value)} placeholder={media ? 'Kosongkan untuk kirim gambar saja' : '{Halo|Hai} {nama}, ...'} />
           </label>
           <p className="mut">Variabel: {'{nama} {telepon} {tahap} {tanggal} {akun}'} + kolom CSV. Spintax: {'{Halo|Hai|Selamat pagi}'} dipilih acak per penerima agar pesan tidak identik.</p>
           <div className="row"><b>Pratinjau</b> <span className="mut">untuk {sample.name || sample.phone}</span> <button onClick={() => setSeed((x) => x + 1)}>Acak ulang</button></div>
-          <div className="preview" aria-live="polite">{prev.text || <span className="mut">(kosong)</span>}</div>
+          <div className="preview" aria-live="polite">
+            {media && <img className="thumb big" src={media.dataUrl} alt="Pratinjau gambar" />}
+            {prev.text || <span className="mut">{media ? '(tanpa caption)' : '(kosong)'}</span>}
+          </div>
           {prev.unresolved.length > 0 && <p className="err">Variabel belum terisi: {prev.unresolved.map((u) => `{${u}}`).join(' ')}. Penerima tanpa data ini akan dilewati.</p>}
         </div>
       )}
@@ -325,6 +359,7 @@ function Wizard({ onStarted, initial }: { onStarted: () => void; initial?: Wizar
           <label className="chk" style={{ margin: '8px 0' }}><input type="checkbox" checked={later} onChange={(e) => setLater(e.target.checked)} /><span>Jadwalkan mulai nanti</span></label>
           {later && <input type="datetime-local" aria-label="Waktu mulai" value={startLocal} onChange={(e) => setStartLocal(e.target.value)} />}
           <ul>
+            <li>{media ? `Gambar: ${media.name} (${formatBytes(media.bytes)}) ${body.trim() ? 'dengan caption' : 'tanpa caption'}` : 'Hanya teks'}</li>
             <li>{recipients.length} penerima, {plan.items.length} pesan akan dibuat{plan.skipped.length ? `, ${plan.skipped.length} dilewati` : ''}</li>
             <li>Mulai: {fmt(plan.startAt)}</li>
             <li>Perkiraan selesai: {plan.ok ? `${fmt(plan.endAt)} (${describeDuration(plan.durationMs)})` : '-'}</li>

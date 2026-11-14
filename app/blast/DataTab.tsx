@@ -84,6 +84,7 @@ export function DataTab() {
       if (p.campaignIds.length) {
         await db.outbox.where('campaignId').anyOf(p.campaignIds).delete();
         await db.campaigns.bulkDelete(p.campaignIds);
+        await db.campaignMedia.bulkDelete(p.campaignIds);
       }
       if (sel.has('schedules')) await db.schedules.clear();
       if (sel.has('sendLog')) await db.sendLog.clear();
