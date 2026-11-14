@@ -1,5 +1,5 @@
 import { DataTab } from './DataTab';
-import { flushDraftNow, loadDraft, saveDraftPart, type BlastDraft, type WizardDraft } from './draft';
+import { DRAFT_MEDIA_ID, flushDraftNow, loadDraft, saveDraftPart, type BlastDraft, type WizardDraft } from './draft';
 import { ActivityLog, NowLine, useActivity } from './ActivityLog';
 import { clearActivity } from '../content/outbox-activity';
 import { liveQuery } from 'dexie';
@@ -10,7 +10,7 @@ import { db } from '../shared/db';
 import { ScrollTable } from '../shared/ui/ScrollTable';
 import { PhoneField } from './PhoneField';
 import { prepareImage } from './image-prep';
-import { formatBytes } from '../shared/image-logic';
+import { formatBytes, isValidMedia } from '../shared/image-logic';
 import { RecipientPicker, type PickerResult } from './RecipientPicker';
 import {
   DEFAULT_SAFETY, WARMUP_CAPS, autoSentTimes, countByStatus, describeDuration, logToCsv, normalizeSafety, optOutPhoneSet,
@@ -213,7 +213,8 @@ function Wizard({ onStarted, initial }: { onStarted: () => void; initial?: Wizar
   const [pickKey, setPickKey] = useState(0);
   const [allowDup, setAllowDup] = useState(initial?.allowDuplicates ?? false);
   const [body, setBody] = useState(initial?.body ?? '');
-  const [media, setMedia] = useState<MediaInput | null>(initial?.media ?? null);
+  const [media, setMedia] = useState<MediaInput | null>(null);
+  const mediaReady = useRef(!initial?.mediaMeta); // false until the saved draft image has been read back (otherwise the first render would delete it)
   const [mediaErr, setMediaErr] = useState('');
   const [mediaBusy, setMediaBusy] = useState(false);
   const [safety, setSafety] = useState<SafetySettings>(initial?.safety ?? DEFAULT_SAFETY);
@@ -230,7 +231,20 @@ function Wizard({ onStarted, initial }: { onStarted: () => void; initial?: Wizar
   const earliest = useLive(async () => (await db.sendLog.orderBy('ts').filter((e) => e.status === 'sent' && e.mode === 'auto').first())?.ts ?? null, null as number | null);
 
   // Auto-save everything typed so far (survives a refresh, closing the overlay, or switching tabs).
-  useEffect(() => { saveDraftPart({ wizard: { step, name, body, safety, optIn, later, startLocal, recipients: picked.recipients, source: picked.source, allowDuplicates: allowDup, media: media ?? undefined } }); }, [step, name, body, safety, optIn, later, startLocal, picked, allowDup, media]);
+  useEffect(() => { saveDraftPart({ wizard: { step, name, body, safety, optIn, later, startLocal, recipients: picked.recipients, source: picked.source, allowDuplicates: allowDup, mediaMeta: media ? { name: media.name, mime: media.mime, bytes: media.bytes } : (initial?.mediaMeta && !mediaReady.current ? initial.mediaMeta : undefined) } }); }, [step, name, body, safety, optIn, later, startLocal, picked, allowDup, media]);
+  // The image bytes are stored once (IndexedDB) instead of being rewritten into the draft on every keystroke.
+  useEffect(() => {
+    if (!initial?.mediaMeta) return;
+    let live = true;
+    void db.campaignMedia.get(DRAFT_MEDIA_ID).then((m) => { if (live && m && isValidMedia(m)) setMedia({ name: m.name, mime: m.mime, bytes: m.bytes, dataUrl: m.dataUrl }); }).catch(() => undefined).finally(() => { mediaReady.current = true; });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!mediaReady.current) return;
+    if (media) void db.campaignMedia.put({ ...media, id: DRAFT_MEDIA_ID }).catch(() => undefined);
+    else void db.campaignMedia.delete(DRAFT_MEDIA_ID).catch(() => undefined);
+  }, [media]);
   useEffect(() => () => { void flushDraftNow(); }, []);
   const onPick = useCallback((r: PickerResult) => {
     if (restoredRef.current && r.recipients.length === 0) return; // the picker starts empty: keep the saved recipients until the user chooses new ones
@@ -438,7 +452,7 @@ function Running({ campaigns }: { campaigns: Campaign[] }) {
                       <tr key={i.id}>
                         <td>{i.phone}</td><td>{i.name ?? '-'}</td><td><Badge s={i.status} /></td><td>{fmt(i.dueAt)}</td><td className="err wrap">{i.error ?? ''}</td>
                         <td>{i.status === 'draft' && <>
-                          <button onClick={() => void navigator.clipboard?.writeText(i.text)}>Salin</button>{' '}
+                          {i.text && <><button onClick={() => void navigator.clipboard?.writeText(i.text)}>Salin</button>{' '}</>}
                           <button onClick={() => void send({ kind: 'ob:result', itemId: i.id, status: 'sent' })}>Tandai terkirim</button></>}</td>
                       </tr>
                     ))}

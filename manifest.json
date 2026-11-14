@@ -60,14 +60,14 @@
         "assets/autoreply-types-Df-z_QjU.js",
         "assets/analytics-logic-CQSGZEo7.js",
         "assets/lead-intel-logic-RzERQbSs.js",
-        "assets/outbox-logic-Clh3QCSZ.js",
-        "assets/image-logic-DjuEArA8.js",
+        "assets/outbox-logic--PMI2m4I.js",
+        "assets/image-logic-CEqQggZ5.js",
         "assets/outbox-activity-DTC6FiVK.js",
         "assets/template-engine-BoGLHE2L.js",
         "assets/wa-format-Cxt_uRRu.js",
-        "assets/index.ts-DJx7M0sG.js",
+        "assets/index.ts-B6t_5x8n.js",
         "assets/virtual-session.js-CWgDXvAI.js",
-        "assets/wa-adapter.ts-Lk04ZIoI.js"
+        "assets/wa-adapter.ts-5hS2QINK.js"
       ],
       "use_dynamic_url": false
     }
@@ -75,7 +75,7 @@
   "content_scripts": [
     {
       "js": [
-        "assets/index.ts-loader-DAVt-lGY.js"
+        "assets/index.ts-loader-Cq4m_t1_.js"
       ],
       "matches": [
         "https://web.whatsapp.com/*"
@@ -95,7 +95,7 @@
     },
     {
       "js": [
-        "assets/wa-adapter.ts-loader-DuXTH-nF.js"
+        "assets/wa-adapter.ts-loader-D3xxHPiF.js"
       ],
       "matches": [
         "https://web.whatsapp.com/*"

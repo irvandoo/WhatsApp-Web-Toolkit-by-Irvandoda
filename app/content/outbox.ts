@@ -50,7 +50,7 @@ async function killed(): Promise<boolean> {
 }
 
 async function report(itemId: string, status: 'sent' | 'failed', extra: { error?: string; permanent?: boolean; chatId?: string } = {}): Promise<void> {
-  try { await chrome.runtime.sendMessage({ kind: 'ob:result', itemId, status, ...extra }); } catch { /* worker asleep: stale-recovery handles it */ }
+  try { await chrome.runtime.sendMessage({ kind: 'ob:result', itemId, status, ...extra, ...(extra.error ? { error: extra.error.slice(0, 600) } : {}) }); } catch { /* worker asleep: stale-recovery handles it */ }
 }
 
 /** Campaign image, fetched from the background once and kept while the campaign keeps sending (one image per blast). */

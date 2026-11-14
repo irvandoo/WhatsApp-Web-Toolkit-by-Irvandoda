@@ -24,11 +24,15 @@ export function dataUrlBytes(dataUrl: string): number {
 export const dataUrlMime = (dataUrl: string): string | null => DATA_URL.exec(dataUrl)?.[1] ?? null;
 
 /** Strict check used by the planner AND the background: only real image data URLs within the size cap. */
+let lastValid: { url: string; mime: string } | null = null; // the UI re-validates the same multi-MB string on every keystroke
 export function isValidMedia(m: MediaInput | undefined | null): boolean {
   if (!m || typeof m.dataUrl !== 'string' || !IMAGE_MIMES.includes(m.mime)) return false;
+  if (lastValid && lastValid.url === m.dataUrl && lastValid.mime === m.mime) return true;
   if (dataUrlMime(m.dataUrl) !== m.mime) return false;
   const n = dataUrlBytes(m.dataUrl);
-  return n > 0 && n <= MAX_IMAGE_BYTES;
+  const ok = n > 0 && n <= MAX_IMAGE_BYTES;
+  if (ok) lastValid = { url: m.dataUrl, mime: m.mime };
+  return ok;
 }
 
 export const formatBytes = (n: number): string => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);

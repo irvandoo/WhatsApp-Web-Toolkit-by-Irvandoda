@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MAX_IMAGE_BYTES, dataUrlBytes, dataUrlToBlob, fitSize, formatBytes, isValidMedia } from './image-logic';
 import { assertSendable, normalizeSafety, planCampaign } from './outbox-logic';
 import type { MediaInput, OutboxItem } from './outbox-types';
-import { sanitizeDraft } from '../blast/draft';
+import { hasContent, sanitizeDraft } from '../blast/draft';
 
 // 1x1 transparent PNG
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
@@ -82,13 +82,30 @@ describe('planCampaign with image', () => {
   });
 });
 
-describe('draft keeps the image safely', () => {
-  const wiz = (media: unknown) => ({ v: 1, wizard: { step: 2, name: 'x', body: '', recipients: [], source: 'csv', media } });
-  it('restores a valid image', () => {
-    expect(sanitizeDraft(wiz(img()))?.wizard?.media?.name).toBe('promo.png');
+describe('draft keeps only the image metadata (bytes live in IndexedDB)', () => {
+  const wiz = (mediaMeta: unknown) => ({ v: 1, wizard: { step: 2, name: 'x', body: '', recipients: [], source: 'csv', mediaMeta } });
+  it('restores valid metadata and never carries a data URL', () => {
+    const d = sanitizeDraft(wiz({ name: 'promo.png', mime: 'image/png', bytes: 70, dataUrl: 'data:image/png;base64,AAAA' }));
+    expect(d?.wizard?.mediaMeta).toEqual({ name: 'promo.png', mime: 'image/png', bytes: 70 });
+    expect(JSON.stringify(d)).not.toContain('base64');
   });
-  it('drops a tampered/invalid image', () => {
-    expect(sanitizeDraft(wiz(img({ dataUrl: 'data:text/html;base64,PGI+' })))?.wizard?.media).toBeUndefined();
-    expect(sanitizeDraft(wiz('junk'))?.wizard?.media).toBeUndefined();
+  it('drops tampered/invalid metadata', () => {
+    expect(sanitizeDraft(wiz({ name: 'x', mime: 'text/html', bytes: 70 }))?.wizard?.mediaMeta).toBeUndefined();
+    expect(sanitizeDraft(wiz({ name: 'x', mime: 'image/png', bytes: 0 }))?.wizard?.mediaMeta).toBeUndefined();
+    expect(sanitizeDraft(wiz({ name: 'x', mime: 'image/png', bytes: MAX_IMAGE_BYTES + 1 }))?.wizard?.mediaMeta).toBeUndefined();
+    expect(sanitizeDraft(wiz('junk'))?.wizard?.mediaMeta).toBeUndefined();
+  });
+  it('a draft with only an image counts as content', () => {
+    expect(hasContent(sanitizeDraft(wiz({ name: 'p.png', mime: 'image/png', bytes: 70 })))).toBe(true);
+  });
+});
+
+describe('isValidMedia cache', () => {
+  it('stays correct after a cached success (different mime / url are re-checked)', () => {
+    const ok = img();
+    expect(isValidMedia(ok)).toBe(true);
+    expect(isValidMedia(ok)).toBe(true);
+    expect(isValidMedia({ ...ok, mime: 'image/jpeg' })).toBe(false);
+    expect(isValidMedia({ ...ok, dataUrl: 'data:image/png;base64,@@@@' })).toBe(false);
   });
 });

@@ -1,6 +1,7 @@
 import { normalizeSafety } from '../shared/outbox-logic';
-import { isValidMedia } from '../shared/image-logic';
-import type { CampaignSource, MediaInput, Recipient, SafetySettings, Schedule } from '../shared/outbox-types';
+import { IMAGE_MIMES, MAX_IMAGE_BYTES } from '../shared/image-logic';
+import { db } from '../shared/db';
+import type { CampaignSource, MediaMeta, Recipient, SafetySettings, Schedule } from '../shared/outbox-types';
 
 /**
  * Work-in-progress of the Blast page, kept in chrome.storage.local (on this PC, in the browser profile) so a refresh of the
@@ -22,8 +23,10 @@ export interface WizardDraft {
   recipients: Recipient[];
   source: CampaignSource;
   allowDuplicates?: boolean;
-  media?: MediaInput;
+  /** Only the image's metadata is kept here; its bytes live once in IndexedDB (campaignMedia row DRAFT_MEDIA_ID). */
+  mediaMeta?: MediaMeta;
 }
+export const DRAFT_MEDIA_ID = 'draft';
 export interface BlastDraft { v: 1; savedAt: number; tab?: string; wizard?: WizardDraft; schedule?: Schedule }
 
 // Writes are merged and debounced; one chain so parts saved by different components never overwrite each other.
@@ -72,10 +75,9 @@ export function sanitizeDraft(raw: unknown): BlastDraft | null {
       source: SOURCES.includes(w.source as CampaignSource) ? (w.source as CampaignSource) : 'csv',
       allowDuplicates: w.allowDuplicates === true,
     };
-    const md = w.media as Record<string, unknown> | undefined;
-    if (md && typeof md === 'object') {
-      const media: MediaInput = { name: str(md.name, 120) || 'gambar', mime: str(md.mime, 20), bytes: Number(md.bytes) || 0, dataUrl: typeof md.dataUrl === 'string' ? md.dataUrl : '' };
-      if (isValidMedia(media)) out.wizard.media = media;
+    const md = w.mediaMeta as Record<string, unknown> | undefined;
+    if (md && typeof md === 'object' && IMAGE_MIMES.includes(String(md.mime)) && Number(md.bytes) > 0 && Number(md.bytes) <= MAX_IMAGE_BYTES) {
+      out.wizard.mediaMeta = { name: str(md.name, 120) || 'gambar', mime: String(md.mime), bytes: Math.round(Number(md.bytes)) };
     }
   }
   const s = o.schedule as Record<string, unknown> | undefined;
@@ -88,7 +90,7 @@ export function sanitizeDraft(raw: unknown): BlastDraft | null {
 /** True when the draft holds anything worth restoring (nothing typed yet = nothing to announce). */
 export function hasContent(d: BlastDraft | null): boolean {
   const w = d?.wizard;
-  return !!w && (w.recipients.length > 0 || !!w.name.trim() || !!w.body.trim() || !!w.media);
+  return !!w && (w.recipients.length > 0 || !!w.name.trim() || !!w.body.trim() || !!w.mediaMeta);
 }
 
 export async function loadDraft(): Promise<BlastDraft | null> {
@@ -119,6 +121,7 @@ export function saveDraftPart(part: Partial<BlastDraft>): void {
 
 export async function clearDraft(): Promise<void> {
   pending = {};
+  try { await db.campaignMedia.delete(DRAFT_MEDIA_ID); } catch { /* ignore */ }
   if (timer) { clearTimeout(timer); timer = undefined; }
   chain = chain.then(async () => { try { await chrome.storage.local.remove(DRAFT_KEY); } catch { /* ignore */ } });
   await chain;
