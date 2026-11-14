@@ -616,11 +616,30 @@ async function verifyMediaSent(chat: Any, caption: string, since: number, waitMs
   return false;
 }
 
+/**
+ * Finds `fn` by exported name when the module name is unknown: scans only loaded modules whose NAME looks media-related
+ * (never every module), remembers the result. Returns the exporting module's function or undefined.
+ */
+const fnCache = new Map<string, { at: number; fn: Any; from: string }>();
+function findFn(fn: string, known: string[]): { fn: Any; from: string } | undefined {
+  const hit = fnCache.get(fn);
+  if (hit && (hit.fn || Date.now() - hit.at < 30_000)) return hit.fn ? hit : undefined;
+  let found: { fn: Any; from: string } | undefined;
+  const pick = (m: Any, from: string) => {
+    const f = m?.[fn] ?? m?.default?.[fn] ?? m?.OpaqueData?.[fn];
+    if (typeof f === 'function') found = { fn: f.bind(m?.[fn] ? m : m?.default?.[fn] ? m.default : m.OpaqueData), from };
+  };
+  for (const n of known) { if (!found) pick(req(n), n); }
+  if (!found) for (const n of discoverModules(/Media|Opaque|Prep|Upload|Attach/i, 200)) { if (!found) pick(req(n), n); }
+  fnCache.set(fn, { at: Date.now(), fn: found?.fn, from: found?.from ?? '' });
+  return found;
+}
+
 async function sendMediaViaApi(chat: Any, blob: Blob, mime: string, caption: string): Promise<{ method: string } | { error: string }> {
-  const prep = req('WAWebMediaPrep');
-  const opq = req('WAWebMediaOpaqueData');
-  const prepRaw = prep?.prepRawMedia ?? prep?.default?.prepRawMedia;
-  const create = opq?.createFromData ?? opq?.default?.createFromData ?? opq?.OpaqueData?.createFromData;
+  const prepFound = findFn('prepRawMedia', ['WAWebMediaPrep']);
+  const createFound = findFn('createFromData', ['WAWebMediaOpaqueData']);
+  const prepRaw = prepFound?.fn;
+  const create = createFound?.fn;
   if (typeof prepRaw !== 'function' || typeof create !== 'function') return { error: 'send-unavailable' };
   try {
     const file = new File([blob], mime === 'image/png' ? 'gambar.png' : 'gambar.jpg', { type: mime });
@@ -630,7 +649,7 @@ async function sendMediaViaApi(chat: Any, blob: Blob, mime: string, caption: str
     if (typeof job?.sendToChat !== 'function') return { error: 'send-unavailable' };
     const r = await job.sendToChat(chat, caption ? { caption } : {});
     if (SENDERR(r)) return { error: 'send-failed' };
-    return { method: 'WAWebMediaPrep.sendToChat' };
+    return { method: `${prepFound?.from ?? 'media'}.prepRawMedia→sendToChat` };
   } catch { return { error: 'send-failed' }; }
 }
 
@@ -717,6 +736,7 @@ function probe(): ProbeResult {
   items.push(fnItem('Label', 'WAWebCollections', c, 'Label'));
   add('Cek nomor (check:registered)', 'WAWebQueryExist', ['queryExists', 'queryExist']);
   add('Akun', 'WAWebUserPrefsMeUser', ['getMaybeMePnUser', 'getMaybeMeLidUser', 'getMaybeMeUser']);
+  for (const n of discoverModules(/Media(Prep|Opaque|Send|Upload)|OpaqueData|SendMsg|SendMessage|AddAndSend|SendMedia|Attach/i, 60)) items.push({ group: 'Penemuan modul (kirim gambar/pesan)', name: n, found: true, type: 'module' });
   for (const n of discoverModules(/lid|phone|pn[A-Z]|PhoneNumber/i)) items.push({ group: 'Penemuan modul (LID/nomor)', name: n, found: true, type: 'module' });
   return { items, accountId: accountId(), store: !!c?.Chat, hidden: document.hidden };
 }
