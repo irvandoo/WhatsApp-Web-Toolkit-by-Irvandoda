@@ -665,11 +665,12 @@ async function sendMediaViaApi(chat: Any, blob: Blob, mime: string, caption: str
         if (SENDERR(r)) { errs.push(`${label}: hasil galat`); continue; }
         return { method: `${prepFound?.from ?? 'media'}.prepRawMedia→sendToChat` };
       } catch (e) {
-        const top = String((e as Error)?.stack ?? '').split(/\r?\n/).slice(1, 3).map((l) => l.trim().replace(/https?:\/\/\S*\//, '')).join(' < ');
-        errs.push(`${label}: ${msg(e)} @ ${top}`);
+        const frames = String((e as Error)?.stack ?? '').split(/\r?\n/).slice(1, 6).map((l) => l.trim().replace(/https?:\/\/\S*\//, ''));
+        try { console.warn('[WWT] kirim gambar gagal', label, e, frames); } catch { /* ignore */ }
+        errs.push(`${label}: ${msg(e)} @ ${frames[0] ?? ''}`);
       }
     }
-    return { error: `send-failed: sendToChat gagal [${errs.join(' | ')}] (modul prep=${prepFound?.from}, opaque=${createFound?.from}; job: ${names(job)}; mediaData: ${names(job?.mediaData)})` };
+    return { error: `send-failed: modul prep=${prepFound?.from}, opaque=${createFound?.from}; sendToChat gagal [${errs[0] ?? ''}] (detail lengkap di konsol WhatsApp: [WWT] kirim gambar gagal; job: ${names(job)}; mediaData: ${names(job?.mediaData)})` };
   } catch (e) { return { error: `send-failed: tahap ${stage}: ${msg(e)}` }; }
 }
 
@@ -716,7 +717,7 @@ async function sendMedia(chatId: string, dataUrl: string, mime: string, caption:
   if (!chat) throw new Error('chat-not-found');
   const since = Date.now();
   let res = await sendMediaViaApi(chat, blob, mime, caption);
-  if ('error' in res && res.error === 'send-unavailable' && allowDom) res = await sendMediaViaDom(chat, blob, mime, caption);
+  if ('error' in res && allowDom) res = await sendMediaViaDom(chat, blob, mime, caption);
   if ('error' in res) throw new Error(res.error);
   const verified = verify ? await verifyMediaSent(chat, caption, since) : false;
   return { ok: true, method: res.method, verified };
