@@ -124,10 +124,13 @@ async function sendAuto(item: OutboxItem, checkRegistered: boolean, mediaMeta?: 
     logActivity('ok', 'ok', `Terkirim ke ${who}${r?.method ? ` (jalur ${r.method}, ${r.verified ? 'terverifikasi muncul di chat' : 'belum terverifikasi'})` : ''}`, ids);
     await report(item.id, 'sent', { chatId });
   } catch (e) {
-    const key = e instanceof Error ? e.message : String(e);
+    const raw = e instanceof Error ? e.message : String(e);
+    const [key, ...rest] = raw.split(': ');
+    const detail = rest.join(': ');
+    const text = ERR[key] ? (detail ? `${ERR[key]} [${detail}]` : ERR[key]) : raw;
     state.failed++;
-    logActivity('err', 'gagal', `Gagal mengirim ke ${who}: ${ERR[key] ?? key}`, ids);
-    await report(item.id, 'failed', { error: ERR[key] ?? key, permanent: key === 'send-rejected', chatId });
+    logActivity('err', 'gagal', `Gagal mengirim ke ${who}: ${text}`, ids);
+    await report(item.id, 'failed', { error: text, permanent: key === 'send-rejected', chatId });
   }
 }
 

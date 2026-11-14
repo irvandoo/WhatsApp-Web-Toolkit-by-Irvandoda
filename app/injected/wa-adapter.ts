@@ -641,16 +641,28 @@ async function sendMediaViaApi(chat: Any, blob: Blob, mime: string, caption: str
   const prepRaw = prepFound?.fn;
   const create = createFound?.fn;
   if (typeof prepRaw !== 'function' || typeof create !== 'function') return { error: 'send-unavailable' };
+  let stage = 'file';
+  const names = (o: Any): string => { try { const k = new Set<string>(Object.keys(o ?? {})); for (let p = Object.getPrototypeOf(o); p && p !== Object.prototype; p = Object.getPrototypeOf(p)) Object.getOwnPropertyNames(p).forEach((n) => k.add(n)); return [...k].slice(0, 25).join(','); } catch { return '?'; } };
+  const msg = (e: unknown) => String((e as Error)?.message ?? e).slice(0, 120);
   try {
     const file = new File([blob], mime === 'image/png' ? 'gambar.png' : 'gambar.jpg', { type: mime });
-    const opaque = await create(file, mime);
-    const job = prepRaw(opaque, { isViewOnce: false });
-    if (typeof job?.waitForPrep === 'function') await job.waitForPrep();
-    if (typeof job?.sendToChat !== 'function') return { error: 'send-unavailable' };
-    const r = await job.sendToChat(chat, caption ? { caption } : {});
-    if (SENDERR(r)) return { error: 'send-failed' };
-    return { method: `${prepFound?.from ?? 'media'}.prepRawMedia→sendToChat` };
-  } catch { return { error: 'send-failed' }; }
+    stage = 'createFromData'; const opaque = await create(file, mime);
+    stage = 'prepRawMedia'; const job = prepRaw(opaque, { isViewOnce: false });
+    if (typeof job?.waitForPrep === 'function') { stage = 'waitForPrep'; await job.waitForPrep(); }
+    if (typeof job?.sendToChat !== 'function') return { error: `send-failed: tahap ${stage}, objek persiapan tanpa sendToChat (isi: ${names(job)})` };
+    // WhatsApp changed some helpers from (chat, opts) to ({chat, ...opts}); try both shapes.
+    const opts = caption ? { caption } : {};
+    const errs: string[] = [];
+    for (const [label, call] of [['(chat,opts)', () => job.sendToChat(chat, opts)], ['({chat,...})', () => job.sendToChat({ chat, ...opts })]] as Array<[string, () => unknown]>) {
+      stage = `sendToChat${label}`;
+      try {
+        const r = await call();
+        if (SENDERR(r)) { errs.push(`${label}: hasil galat`); continue; }
+        return { method: `${prepFound?.from ?? 'media'}.prepRawMedia→sendToChat` };
+      } catch (e) { errs.push(`${label}: ${msg(e)}`); }
+    }
+    return { error: `send-failed: sendToChat gagal [${errs.join(' | ')}] (isi: ${names(job)})` };
+  } catch (e) { return { error: `send-failed: tahap ${stage}: ${msg(e)}` }; }
 }
 
 const waitFor = async <T,>(fn: () => T | null | undefined, ms: number): Promise<T | null> => {
