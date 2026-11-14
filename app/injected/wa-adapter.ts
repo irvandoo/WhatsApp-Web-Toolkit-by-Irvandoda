@@ -636,7 +636,7 @@ function findFn(fn: string, known: string[]): { fn: Any; from: string } | undefi
 }
 
 async function sendMediaViaApi(chat: Any, blob: Blob, mime: string, caption: string): Promise<{ method: string } | { error: string }> {
-  const prepFound = findFn('prepRawMedia', ['WAWebMediaPrep']);
+  const prepFound = findFn('prepRawMedia', ['WAWebPrepRawMedia', 'WAWebMediaPrep']);
   const createFound = findFn('createFromData', ['WAWebMediaOpaqueData']);
   const prepRaw = prepFound?.fn;
   const create = createFound?.fn;
@@ -666,7 +666,7 @@ async function sendMediaViaApi(chat: Any, blob: Blob, mime: string, caption: str
         return { method: `${prepFound?.from ?? 'media'}.prepRawMedia→sendToChat` };
       } catch (e) {
         const frames = String((e as Error)?.stack ?? '').split(/\r?\n/).slice(1, 6).map((l) => l.trim().replace(/https?:\/\/\S*\//, ''));
-        try { console.warn('[WWT] kirim gambar gagal', label, e, frames); } catch { /* ignore */ }
+        try { console.warn('[WWT] kirim gambar gagal ' + label + ' :: ' + String((e as Error)?.message ?? e) + ' :: ' + frames.join(' | ')); } catch { /* ignore */ }
         errs.push(`${label}: ${msg(e)} @ ${frames[0] ?? ''}`);
       }
     }
@@ -754,7 +754,7 @@ function probe(): ProbeResult {
   add('Kirim pesan', 'WAWebMessageSender', ['sendTextMsgToChat', 'addAndSendTextMsg']);
   const sample = chatsColl()[0];
   items.push(fnItem('Kirim pesan', 'chat (contoh)', sample, 'sendMessage'));
-  add('Kirim gambar', 'WAWebMediaPrep', ['prepRawMedia']);
+  add('Kirim gambar', 'WAWebPrepRawMedia', ['prepRawMedia']);
   add('Kirim gambar', 'WAWebMediaOpaqueData', ['createFromData']);
   add('Makro DOM', 'WAWebCmd', []);
   const cmd = req('WAWebCmd');
