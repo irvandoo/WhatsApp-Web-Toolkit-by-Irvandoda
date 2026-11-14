@@ -76,3 +76,54 @@ pre.mini{margin:0;white-space:pre-wrap;font:12px ui-monospace,Consolas,monospace
 .mediabox .thumb,.preview .thumb{max-width:120px;max-height:120px;border-radius:6px;object-fit:cover;display:block}
 .preview .thumb.big{max-width:240px;max-height:240px;margin-bottom:6px}
 label.btn{display:inline-block;cursor:pointer;border:1px solid var(--bd,#9996);border-radius:6px;padding:4px 10px}
+
+/* ===== polesan tampilan: sederhana & lembut (menimpa aturan di atas) ===== */
+.wrap{max-width:1180px;margin:0 auto;padding:16px 20px}
+header.top{margin-bottom:12px}
+h1{font-size:19px;font-weight:650;letter-spacing:-.01em}
+h2{font-size:15px;font-weight:600;margin:0 0 6px}
+button{padding:6px 14px}
+button.stop{padding:5px 14px;border-radius:99px;font-size:13px}
+
+/* tab: kontrol segmen */
+nav[role=tablist]{display:inline-flex;align-self:flex-start;gap:2px;padding:3px;margin-bottom:12px;background:var(--wt-surface-2,var(--track));border:1px solid var(--bd);border-radius:12px}
+nav[role=tablist] button{border:0;background:transparent;border-radius:9px;padding:6px 14px;color:var(--mut);font-weight:500}
+nav[role=tablist] button:hover:not(:disabled){background:transparent;color:var(--fg)}
+nav[role=tablist] button.on{background:var(--card);color:var(--wt-accent-ink,var(--ac));font-weight:600;box-shadow:var(--sh)}
+
+/* banner: catatan tenang, bukan kotak peringatan besar */
+.banner{background:transparent;border:0;border-left:3px solid var(--warn-bd);border-radius:0 var(--rs) var(--rs) 0;padding:4px 12px;margin-bottom:8px;color:var(--mut);font-size:13px}
+.banner b{color:var(--fg)}
+.banner a{color:var(--wt-accent-ink,var(--ac))}
+
+/* langkah wizard: garis kemajuan */
+.steps{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:8px;margin-bottom:14px}
+.steps span{border:0;border-bottom:3px solid var(--bd);border-radius:2px;background:transparent;padding:6px 2px;text-align:center;font-size:13px;color:var(--mut)}
+.steps span.cur{background:transparent;border-bottom-color:var(--ac);color:var(--fg);font-weight:600}
+.steps span.done{background:transparent;border-bottom-color:var(--ok);color:var(--ok)}
+
+/* kartu */
+.card{padding:16px 18px;box-shadow:none;border-color:var(--bd)}
+.card h2{margin-bottom:8px}
+.wizfoot{padding:10px 0 4px;gap:8px}
+.wizfoot .pri{padding:7px 22px}
+
+/* area gambar: kotak unggah */
+.mediabox{border:1.5px dashed color-mix(in srgb,var(--ac) 45%,var(--bd));border-radius:var(--r);padding:14px 16px;margin-bottom:14px;background:color-mix(in srgb,var(--soft) 55%,transparent)}
+.mediabox>b{font-size:14px}
+.mediabox .thumb,.preview .thumb{max-width:112px;max-height:112px;border-radius:10px;box-shadow:var(--sh)}
+label.btn{display:inline-flex;align-items:center;gap:6px;cursor:pointer;background:var(--card);border:1px solid var(--bd);border-radius:var(--rs);padding:6px 14px;font-weight:600;transition:background .15s,border-color .15s}
+label.btn:hover{background:var(--soft);border-color:var(--ac)}
+
+/* pratinjau pesan: gelembung chat */
+.preview{background:var(--soft);border:0;border-radius:4px 14px 14px 14px;padding:10px 12px;max-width:380px;min-height:0;line-height:1.5;box-shadow:var(--sh)}
+.preview .thumb.big{max-width:100%;max-height:260px;width:100%;object-fit:cover;border-radius:10px;margin-bottom:8px;box-shadow:none}
+
+/* tabel & lencana */
+th{font-size:12px;font-weight:600;color:var(--mut);letter-spacing:.02em}
+.badge{padding:1px 10px}
+.bar{height:8px}
+.actlist{border-radius:var(--r)}
+.now{border-radius:var(--rs)}
+
+@media (max-width:640px){.wrap{padding:10px 12px}.steps span{font-size:12px}nav[role=tablist]{display:flex;overflow:auto}}

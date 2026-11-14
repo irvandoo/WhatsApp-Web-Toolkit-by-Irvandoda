@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import type { Interaction } from '../shared/analytics-types';
 import type { CrmMsg } from '../shared/crm-types';
 import { formatDuration } from '../shared/analytics-logic';
-import { exportLeadIntelCsv, hotLeads, INTEL_NOTE, MOMENTUM_GLYPH, MOMENTUM_LABEL, slippingLeads, TEMP_LABEL, type LeadIntel } from '../shared/lead-intel-logic';
+import { exportLeadIntelCsv, firstName, hotLeads, INTEL_NOTE, MOMENTUM_GLYPH, MOMENTUM_LABEL, slippingLeads, TEMP_LABEL, type LeadIntel } from '../shared/lead-intel-logic';
 import { ScrollTable } from '../shared/ui/ScrollTable';
 import { downloadCsv, fmtDateTime, PRIO_LABEL, stamp } from './util';
 
@@ -16,12 +16,16 @@ function Table({ rows, accountNames, toast, empty }: { rows: LeadIntel[]; accoun
     const msg: CrmMsg = { kind: 'crm:reminder:add', contactKey: l.key, text: `Follow up ${l.name || l.phone}: ${l.reason}`, dueAt: Date.now() + 3600e3 };
     try { await chrome.runtime.sendMessage(msg); toast('Pengingat dibuat (1 jam lagi).'); } catch { toast('Gagal membuat pengingat.'); }
   }
+  async function copyMsg(l: LeadIntel) {
+    try { await navigator.clipboard.writeText(l.suggestedMessage ?? ''); toast(`Pesan saran untuk ${firstName(l.name)} disalin. Tempel di chat lalu sesuaikan.`); } catch { toast('Gagal menyalin (izin clipboard diblokir).'); }
+  }
+  const hourTxt = (h: number | null | undefined) => (h == null ? '' : `${String(h).padStart(2, '0')}.00`);
   return (
     <ScrollTable stickyFirst maxHeight="max(260px, 62vh)" label="Tabel lead">
       <table>
         <thead><tr>
           <th scope="col">Nama</th><th scope="col">Nomor</th><th scope="col">Akun</th><th scope="col">Temperature</th><th scope="col" className="num">Engagement</th>
-          <th scope="col">Momentum</th><th scope="col">Prioritas</th><th scope="col" className="wrap">Alasan</th><th scope="col" className="wrap">Saran</th><th scope="col">Terakhir</th><th scope="col"><span className="sr">Aksi</span></th>
+          <th scope="col">Momentum</th><th scope="col">Prioritas</th><th scope="col" className="wrap">Alasan</th><th scope="col" className="wrap">Saran</th><th scope="col" className="wrap">Pesan saran</th><th scope="col">Terakhir</th><th scope="col"><span className="sr">Aksi</span></th>
         </tr></thead>
         <tbody>
           {rows.map((l) => (
@@ -31,12 +35,14 @@ function Table({ rows, accountNames, toast, empty }: { rows: LeadIntel[]; accoun
               <td className="num"><span className="eng" aria-hidden="true"><i style={{ width: `${l.engagement}%` }} /></span>{l.engagement}</td>
               <td>{MOMENTUM_GLYPH[l.momentum]} {MOMENTUM_LABEL[l.momentum]}</td>
               <td><span className={`badge b-${l.followUpPriority}`}>{PRIO_LABEL[l.followUpPriority]}</span></td>
-              <td className="wrap">{l.reason}</td><td className="wrap">{l.nextAction}</td>
+              <td className="wrap">{l.reason}</td>
+              <td className="wrap">{l.nextAction}{l.bestHour != null && <div className="muted" style={{ fontSize: 12 }}>Biasanya aktif sekitar pukul {hourTxt(l.bestHour)}</div>}</td>
+              <td className="wrap">{l.suggestedMessage ? <><div style={{ maxWidth: 320, whiteSpace: 'pre-wrap' }}>{l.suggestedMessage}</div><button onClick={() => void copyMsg(l)}>Salin pesan</button></> : <span className="muted">-</span>}</td>
               <td>{l.lastActivityTs ? `${l.lastSender === 'in' ? 'Mereka' : 'Kita'}, ${fmtDateTime(l.lastActivityTs)}` : '-'}</td>
               <td><div className="row"><button className="pri" onClick={() => void openRoom(l)}>Buka chat</button><button onClick={() => void remind(l)}>Buat pengingat</button></div></td>
             </tr>
           ))}
-          {!rows.length && <tr><td colSpan={11} className="empty">{empty}</td></tr>}
+          {!rows.length && <tr><td colSpan={12} className="empty">{empty}</td></tr>}
         </tbody>
       </table>
     </ScrollTable>

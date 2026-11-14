@@ -33,6 +33,10 @@ export interface LeadIntel {
   followUpPriority: FollowPriority;
   reason: string;                    // Indonesian
   nextAction: string;                // Indonesian
+  /** Ready-to-edit follow-up message (Indonesian) matching intent/situation; never contains private data beyond the first name. */
+  suggestedMessage?: string;
+  /** Hour of day (0-23, local) when THEY most often write to us; null when fewer than 5 inbound messages are known. */
+  bestHour?: number | null;
   /** ms since the last inbound message while it is still unanswered (0 when we spoke last). */
   waitingMs: number;
   stage?: string; tags?: string[]; value?: number; optOut?: boolean;
@@ -209,6 +213,53 @@ export function followUp(p: {
   return { priority: 'low', reason: 'Tidak ada tindakan mendesak', nextAction: 'Pantau' };
 }
 
+// ---------- recommendation: suggested message + best contact time ----------
+
+/** "Budi Santoso" -> "Budi"; empty / number-like names -> "Kak". */
+export function firstName(name: string | undefined): string {
+  const n = (name ?? '').trim().split(/\s+/)[0] ?? '';
+  return n && !/^[+\d]/.test(n) ? n.slice(0, 24) : 'Kak';
+}
+
+/**
+ * Hour (local) with the most INBOUND messages, from timestamps only. Needs >= 5 inbound events, otherwise null.
+ * Ties go to the earlier hour; the result is meant as "try around this time", not a guarantee.
+ */
+export function bestContactHour(events: MsgEvent[]): number | null {
+  const ins = events.filter((e) => e.dir === 'in');
+  if (ins.length < 5) return null;
+  const bins = new Array<number>(24).fill(0);
+  for (const e of ins) bins[new Date(e.ts).getHours()]++;
+  let best = 0;
+  for (let h = 1; h < 24; h++) if (bins[h] > bins[best]) best = h;
+  return best;
+}
+
+/** Editable follow-up text. Deterministic, Indonesian, polite; null when we should not write (opt-out / nothing to say). */
+export function suggestMessage(p: {
+  name?: string; intent: Intent | null; temperature: Temperature; momentum: Momentum; lastSender: 'in' | 'out' | null;
+  waitingMs: number; optOut?: boolean; totalMsgs: number; stage?: string;
+}): string | null {
+  if (p.optOut || p.totalMsgs === 0) return null;
+  const n = firstName(p.name);
+  if (p.lastSender === 'in') {
+    const late = p.waitingMs >= 6 * H ? 'Mohon maaf baru sempat membalas. ' : '';
+    switch (p.intent) {
+      case 'komplain': return `Halo ${n}, mohon maaf atas ketidaknyamanannya. Boleh dibantu detail kendalanya (foto/nomor pesanan)? Kami segera carikan solusinya.`;
+      case 'siap-beli': return `${late}Halo ${n}, terima kasih sudah memesan! Berikut rincian pesanan dan cara pembayarannya ya. Setelah transfer, kabari kami agar langsung kami proses.`;
+      case 'tanya-harga': return `${late}Halo ${n}, untuk harga lengkapnya saya kirimkan daftar harga dan penawaran terbaik hari ini ya. Kalau ada yang mau ditanyakan, silakan.`;
+      case 'tanya-info': return `${late}Halo ${n}, terima kasih sudah bertanya. Berikut informasinya. Kalau cocok, saya bantu proses ordernya sekarang ya.`;
+      default: return `${late}Halo ${n}, terima kasih sudah menghubungi kami. Ada yang bisa kami bantu?`;
+    }
+  }
+  if (p.temperature === 'dormant') return `Halo ${n}, apa kabar? Kami ada penawaran baru yang mungkin cocok untuk Anda. Mau saya kirimkan detailnya?`;
+  if (p.momentum === 'slipping' || p.momentum === 'stalled') return `Halo ${n}, saya follow up ya. Apakah masih berminat? Kalau ada yang perlu dipertimbangkan, saya senang membantu.`;
+  return `Halo ${n}, sekadar mengingatkan pesan kami sebelumnya. Kalau sudah siap atau ada pertanyaan, kabari saja ya.`;
+}
+
+/** Orders above this (Rp) make an unanswered lead more urgent. */
+export const BIG_VALUE = 1_000_000;
+
 // ---------- main ----------
 
 export function computeLeadIntel(inp: IntelInput): LeadIntel {
@@ -242,6 +293,13 @@ export function computeLeadIntel(inp: IntelInput): LeadIntel {
   const momentum = momentumOf(evs, now, ageMs);
   const waitingMs = lastSender === 'in' && ageMs != null ? ageMs : 0;
   const f = followUp({ temperature, momentum, intent, lastSender, waitingMs, ageMs, engagement, optOut: contact?.optOut, totalMsgs });
+  // A big deal waiting for our reply deserves one level more urgency (never for opt-out; never above 'urgent').
+  if (!contact?.optOut && (contact?.value ?? 0) >= BIG_VALUE && lastSender === 'in' && waitingMs >= 30 * 60e3) {
+    if (f.priority === 'normal') { f.priority = 'high'; f.reason += ' (nilai besar)'; }
+    else if (f.priority === 'high') { f.priority = 'urgent'; f.reason += ' (nilai besar)'; }
+  }
+  const suggestedMessage = suggestMessage({ name: it?.name || contact?.name, intent, temperature, momentum, lastSender, waitingMs, optOut: contact?.optOut, totalMsgs, stage: contact?.stage });
+  const bestHour = bestContactHour(evs);
 
   return {
     key: it?.key ?? contact?.key ?? (last ? `${last.accountId}|${last.chatId}` : ''),
@@ -251,6 +309,7 @@ export function computeLeadIntel(inp: IntelInput): LeadIntel {
     lastSender, lastActivityTs: lastTs, ourAvgResponseMs: ourAvg, theirAvgResponseMs: theirAvg,
     totalMsgs, inCount, outCount, msgs7d, engagement, intent, temperature, momentum,
     followUpPriority: f.priority, reason: f.reason, nextAction: f.nextAction, waitingMs,
+    suggestedMessage: suggestedMessage ?? undefined, bestHour,
     stage: contact?.stage, tags: contact?.tags, value: contact?.value, optOut: contact?.optOut,
   };
 }
@@ -310,11 +369,11 @@ export const INTEL_NOTE = 'Sinyal dihitung dari waktu dan arah pesan yang terlih
 const iso = (ts: number | null) => (ts == null ? '' : new Date(ts).toISOString());
 
 export function exportLeadIntelCsv(list: LeadIntel[]): string {
-  const cols = ['name', 'phone', 'chat_id', 'temperature', 'engagement', 'momentum', 'follow_up_priority', 'reason', 'next_action',
+  const cols = ['name', 'phone', 'chat_id', 'temperature', 'engagement', 'momentum', 'follow_up_priority', 'reason', 'next_action', 'suggested_message', 'best_hour',
     'intent', 'last_sender', 'last_activity', 'our_avg_response', 'their_avg_response', 'total_msgs', 'in_count', 'out_count', 'msgs_7d', 'waiting', 'stage', 'tags', 'opt_out'];
   return toCsv(list.map((l) => ({
     name: l.name, phone: l.phone, chat_id: l.chatId, temperature: l.temperature, engagement: l.engagement, momentum: l.momentum,
-    follow_up_priority: l.followUpPriority, reason: l.reason, next_action: l.nextAction, intent: l.intent ?? '',
+    follow_up_priority: l.followUpPriority, reason: l.reason, next_action: l.nextAction, suggested_message: l.suggestedMessage ?? '', best_hour: l.bestHour == null ? '' : `${String(l.bestHour).padStart(2, '0')}:00`, intent: l.intent ?? '',
     last_sender: l.lastSender ?? '', last_activity: iso(l.lastActivityTs),
     our_avg_response: l.ourAvgResponseMs == null ? '' : formatDuration(l.ourAvgResponseMs),
     their_avg_response: l.theirAvgResponseMs == null ? '' : formatDuration(l.theirAvgResponseMs),
