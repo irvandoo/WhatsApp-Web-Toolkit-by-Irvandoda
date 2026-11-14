@@ -640,7 +640,7 @@ async function sendMediaViaApi(chat: Any, blob: Blob, mime: string, caption: str
   const createFound = findFn('createFromData', ['WAWebMediaOpaqueData']);
   const prepRaw = prepFound?.fn;
   const create = createFound?.fn;
-  if (typeof prepRaw !== 'function' || typeof create !== 'function') return { error: 'send-unavailable' };
+  if (typeof prepRaw !== 'function' || typeof create !== 'function') return { error: `send-unavailable: fungsi WA tidak ditemukan (prepRawMedia=${prepFound ? prepFound.from : 'tidak ada'}, createFromData=${createFound ? createFound.from : 'tidak ada'})` };
   let stage = 'file';
   const names = (o: Any): string => { try { const k = new Set<string>(Object.keys(o ?? {})); for (let p = Object.getPrototypeOf(o); p && p !== Object.prototype; p = Object.getPrototypeOf(p)) Object.getOwnPropertyNames(p).forEach((n) => k.add(n)); return [...k].slice(0, 25).join(','); } catch { return '?'; } };
   const msg = (e: unknown) => String((e as Error)?.message ?? e).slice(0, 120);
@@ -683,24 +683,24 @@ const waitFor = async <T,>(fn: () => T | null | undefined, ms: number): Promise<
 async function sendMediaViaDom(chat: Any, blob: Blob, mime: string, caption: string): Promise<{ method: string } | { error: string }> {
   const prev = activeChat();
   try {
-    if (!(await openChat(chat))) return { error: 'send-unavailable' };
+    if (!(await openChat(chat))) return { error: 'send-unavailable: chat tidak bisa dibuka' };
     const composer = document.querySelector<HTMLElement>('footer [contenteditable="true"]');
-    if (!composer) return { error: 'send-unavailable' };
+    if (!composer) return { error: 'send-unavailable: kotak chat tidak ditemukan' };
     composer.focus();
     const dt = new DataTransfer();
     dt.items.add(new File([blob], mime === 'image/png' ? 'gambar.png' : 'gambar.jpg', { type: mime }));
     composer.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
     // the media preview replaces the composer: its caption box is a contenteditable outside <footer>
     const cap = await waitFor(() => document.querySelector<HTMLElement>('[data-testid="media-caption-input-container"] [contenteditable="true"], div[role="dialog"] [contenteditable="true"], [data-animate-media-viewer] [contenteditable="true"]'), 6000);
-    if (!cap) return { error: 'send-unavailable' };
+    if (!cap) return { error: 'send-unavailable: pratinjau gambar tidak muncul setelah ditempel' };
     if (caption) {
       const r = await insertIntoComposer(caption, { mode: 'replace', composer: cap });
-      if (!r.ok) return { error: 'send-unavailable' };
+      if (!r.ok) return { error: 'send-unavailable: caption gagal diisi' };
       await sleepMs(150);
     }
     const icons = [...document.querySelectorAll<HTMLElement>('[data-icon="send"], [data-icon="wds-ic-send-filled"], [data-testid="send"]')];
     const btn = icons.length ? ((icons[icons.length - 1].closest('button,[role="button"]') as HTMLElement | null) ?? icons[icons.length - 1]) : null;
-    if (!btn) return { error: 'send-unavailable' };
+    if (!btn) return { error: 'send-unavailable: tombol kirim di pratinjau tidak ditemukan' };
     btn.click();
     return { method: 'dom-paste' };
   } finally {
@@ -717,7 +717,14 @@ async function sendMedia(chatId: string, dataUrl: string, mime: string, caption:
   if (!chat) throw new Error('chat-not-found');
   const since = Date.now();
   let res = await sendMediaViaApi(chat, blob, mime, caption);
-  if ('error' in res && allowDom) res = await sendMediaViaDom(chat, blob, mime, caption);
+  if ('error' in res && allowDom) {
+    const apiErr = res.error;
+    res = await sendMediaViaDom(chat, blob, mime, caption);
+    // keep both reasons: the API failure explains why the macro was needed, the macro failure why it did not help
+    if ('error' in res) res = { error: `${res.error.split(': ')[0]}: jalur API: ${apiErr.replace(/^send-[a-z]+: /, '')} || makro DOM: ${res.error.replace(/^send-[a-z]+: /, '')}` };
+  } else if ('error' in res && !allowDom) {
+    res = { error: `${res.error} (makro DOM mati: nyalakan di Diagnostik pengirim bila ingin mencoba)` };
+  }
   if ('error' in res) throw new Error(res.error);
   const verified = verify ? await verifyMediaSent(chat, caption, since) : false;
   return { ok: true, method: res.method, verified };
