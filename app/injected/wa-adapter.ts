@@ -650,18 +650,26 @@ async function sendMediaViaApi(chat: Any, blob: Blob, mime: string, caption: str
     stage = 'prepRawMedia'; const job = prepRaw(opaque, { isViewOnce: false });
     if (typeof job?.waitForPrep === 'function') { stage = 'waitForPrep'; await job.waitForPrep(); }
     if (typeof job?.sendToChat !== 'function') return { error: `send-failed: tahap ${stage}, objek persiapan tanpa sendToChat (isi: ${names(job)})` };
-    // WhatsApp changed some helpers from (chat, opts) to ({chat, ...opts}); try both shapes.
-    const opts = caption ? { caption } : {};
+    // sendToChat(chat, options) needs an options object; WhatsApp reads several optional fields from it, so offer the usual ones.
+    const full = { caption: caption || undefined, isCaptionByUser: !!caption, quotedMsg: undefined, mentionedJidList: [], groupMentions: [], isViewOnce: false, ...(caption ? {} : { caption: '' }) };
+    const variants: Array<[string, () => unknown]> = [
+      ['(chat,{caption})', () => job.sendToChat(chat, { caption })],
+      ['(chat,full)', () => job.sendToChat(chat, full)],
+      ['(chat,{chat,...full})', () => job.sendToChat(chat, { chat, ...full })],
+    ];
     const errs: string[] = [];
-    for (const [label, call] of [['(chat,opts)', () => job.sendToChat(chat, opts)], ['({chat,...})', () => job.sendToChat({ chat, ...opts })]] as Array<[string, () => unknown]>) {
+    for (const [label, call] of variants) {
       stage = `sendToChat${label}`;
       try {
         const r = await call();
         if (SENDERR(r)) { errs.push(`${label}: hasil galat`); continue; }
         return { method: `${prepFound?.from ?? 'media'}.prepRawMedia→sendToChat` };
-      } catch (e) { errs.push(`${label}: ${msg(e)}`); }
+      } catch (e) {
+        const top = String((e as Error)?.stack ?? '').split(/\r?\n/).slice(1, 3).map((l) => l.trim().replace(/https?:\/\/\S*\//, '')).join(' < ');
+        errs.push(`${label}: ${msg(e)} @ ${top}`);
+      }
     }
-    return { error: `send-failed: sendToChat gagal [${errs.join(' | ')}] (isi: ${names(job)})` };
+    return { error: `send-failed: sendToChat gagal [${errs.join(' | ')}] (modul prep=${prepFound?.from}, opaque=${createFound?.from}; job: ${names(job)}; mediaData: ${names(job?.mediaData)})` };
   } catch (e) { return { error: `send-failed: tahap ${stage}: ${msg(e)}` }; }
 }
 
